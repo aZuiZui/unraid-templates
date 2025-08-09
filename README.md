@@ -1,4 +1,6 @@
-Fan Control Docker for NZXT RGB & Fan Controller (AC-CRFR0-B1-6)
+Change 09/08/2025 Still learning, I have moved the files to be copied to github so the build is getting the correct files. I am still working out on how to get the default files to the appdata. Since this isn't available on unraid appstore it is hard to work out the bug.
+
+Change 08/08/2025 Fan Control Docker for NZXT RGB & Fan Controller (AC-CRFR0-B1-6)
 
 Welcome! This Docker container was created to help control the fans connected to the NZXT RGB & Fan Controller (model AC-CRFR0-B1-6). The goal is to reduce noise when your array is spun down—perfect if you mostly use your cache for media and want quieter operation.
 About
