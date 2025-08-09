@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>minimal-liquidctl</Name>
+  <Repository>zuluuk/minimal-liquidctl:latest</Repository>
+  <Registry>https://hub.docker.com/r/zuluuk/minimal-liquidctl</Registry>
+  <Network>none</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>true</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>&#xD;
+    A minimal Docker container that uses liquidctl to control fan speeds on supported devices. &#xD;
+    Executes a custom script every minute via cron to adjust fan speeds based on drive, NVMe, and motherboard temperatures.&#xD;
+  </Overview>
+  <Category>Tools: Status:Stable</Category>
+  <WebUI/>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/aZuiZui/unraid-templates/main/icons/minimal-liquidctl.png</Icon>
+  <ExtraParams>--log-opt max-size=5m --privileged -v /dev/bus/usb:/dev/bus/usb</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1754720110</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Data Storage" Target="/usr/local/data" Default="/mnt/user/appdata/minimal-liquidctl/" Mode="rw" Description="Path to store your custom fan control script and any logs" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/minimal-liquidctl/</Config>
+  <Config Name="HDD Temp Thresholds" Target="HDD_TEMP_THRESHOLDS_ENV" Default="20,30,35,40,50" Mode="" Description="Comma-separated temperature thresholds for HDDs" Type="Variable" Display="always" Required="false" Mask="false">20,30,35,40,50</Config>
+  <Config Name="Fan 1 Speeds" Target="FAN1_SPEEDS_ENV" Default="10,20,40,50,100" Mode="" Description="Fan speed levels corresponding to HDD thresholds" Type="Variable" Display="always" Required="false" Mask="false">10,20,40,50,100</Config>
+  <Config Name="NVME Temp Thresholds" Target="NVME_TEMP_THRESHOLDS_ENV" Default="20,30,35,40,50" Mode="" Description="Comma-separated temperature thresholds for NVMe devices" Type="Variable" Display="always" Required="false" Mask="false">20,30,35,40,50</Config>
+  <Config Name="Fan 2 Speeds" Target="FAN2_SPEEDS_ENV" Default="10,20,40,50,100" Mode="" Description="Fan speed levels corresponding to NVMe thresholds" Type="Variable" Display="always" Required="false" Mask="false">10,20,40,50,100</Config>
+  <Config Name="MB Temp Thresholds" Target="MB_TEMP_THRESHOLDS_ENV" Default="20,30,35,40,50" Mode="" Description="Comma-separated temperature thresholds for motherboard sensors" Type="Variable" Display="always" Required="false" Mask="false">20,30,35,40,50</Config>
+  <Config Name="Fan 3 Speeds" Target="FAN3_SPEEDS_ENV" Default="20,30,40,50,100" Mode="" Description="Fan speed levels corresponding to motherboard thresholds" Type="Variable" Display="always" Required="false" Mask="false">20,30,40,50,100</Config>
+  <Config Name="Excluded Drives from Temp Calc" Target="EXCLUDED_DRIVES_ENV" Default="sda" Mode="" Description="Comma-separated list of drive IDs to exclude from temperature-based fan control" Type="Variable" Display="always" Required="false" Mask="false">sda</Config>
+  <Config Name="Number of Fans" Target="FAN_QUANTITY_ENV" Default="3" Mode="" Description="How many fans you want to control (1-3)" Type="Variable" Display="always" Required="false" Mask="false">3</Config>
+  <TailscaleStateDir/>
+</Container>
