@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 # Fallback: if script doesn't exist in mounted volume, download it
 if [ ! -f /usr/local/data/fan_control.sh ]; then
@@ -25,3 +25,4 @@ env > /usr/local/bin/env_file
 # Start cron in foreground
 echo "Starting cron..."
 exec cron -f
+
