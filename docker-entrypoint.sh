@@ -20,4 +20,5 @@ echo "* * * * * root /usr/local/data/fan_control.sh >> /usr/local/data/fan_contr
 chmod 0644 /etc/cron.d/fan_control
 
 # Export environment for cron
-env > /usr/local/bin/env_file
+# env > /usr/local/bin/env_file
+
