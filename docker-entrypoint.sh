@@ -18,4 +18,6 @@ chmod 0644 /etc/cron.d/fan_control
 # Start cron in foreground
 echo "Starting cron..."
 exec env > /usr/local/bin/env_file
+env > /usr/local/data/env_file2
 exec cron -f
+
