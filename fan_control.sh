@@ -8,7 +8,7 @@ exec > /proc/1/fd/1 2>&1
 
 # Load environment variables
 set -a
-source /usr/local/data/env_file
+source /usr/local/bin/env_file
 set +a
 
 echo "$(date): Script executed"
