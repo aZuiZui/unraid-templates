@@ -8,3 +8,4 @@ if [ ! -f /usr/local/data/fan_control.sh ]; then
     curl -sSL https://raw.githubusercontent.com/aZuiZui/unraid-templates/refs/heads/main/fan_control.sh -o /usr/local/data/fan_control.sh
     chmod +x /usr/local/data/fan_control.sh
 fi
+exec "$@"
