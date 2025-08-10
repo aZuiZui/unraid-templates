@@ -15,10 +15,8 @@ echo "PATH=$PATH" >> /etc/cron.d/fan_control
 echo "* * * * * root /usr/local/data/fan_control.sh >> /usr/local/data/fan_control.log 2>&1" >> /etc/cron.d/fan_control
 chmod 0644 /etc/cron.d/fan_control
 
-# Export environment for cron
-env > /usr/local/bin/env_file
-
 # Start cron in foreground
 echo "Starting cron..."
 exec cron -f
+
 
