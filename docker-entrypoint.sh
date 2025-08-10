@@ -21,10 +21,3 @@ chmod 0644 /etc/cron.d/fan_control
 
 # Export environment for cron
 env > /usr/local/bin/env_file
-
-# Start cron in foreground
-echo "Starting cron..."
-exec cron
-tail -f /dev/null
-
-
