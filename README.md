@@ -1,3 +1,30 @@
+Change 10/08/2025
+🆕 What's New
+
+This Docker container is now fully automated — no manual setup required!
+✅ Automatic Setup
+
+    On first run, the container automatically downloads docker-entrypoint.sh.
+
+    It then checks for the presence of fan_control.sh in /usr/local/data/:
+
+        If the script already exists, it is left untouched.
+
+        If the script is missing, it is automatically downloaded from GitHub.
+
+🧪 Not Yet in Community Applications?
+
+If the container hasn’t been published to the Community Applications repository yet, you can still deploy it manually:
+
+    Place the Docker template XML file in:
+
+    /boot/config/plugins/dockerMan/templates-user/
+
+    Deploy the container from the Unraid Docker tab using the template.
+
+This setup ensures fan_control.sh is always available without requiring any manual intervention — making installation and maintenance simple and reliable.
+
+
 Change 09/08/2025 Still learning, I have moved the files to be copied to github so the build is getting the correct files. I am still working out on how to get the default files to the appdata. Since this isn't available on unraid appstore it is hard to work out the bug.
 
 Change 08/08/2025 Fan Control Docker for NZXT RGB & Fan Controller (AC-CRFR0-B1-6)
