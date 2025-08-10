@@ -9,10 +9,6 @@ if [ ! -f /usr/local/data/fan_control.sh ]; then
     chmod +x /usr/local/data/fan_control.sh
 fi
 
-# Ensure the log file exists
-touch /usr/local/data/fan_control.log
-chmod 666 /usr/local/data/fan_control.log
-
 # Create cron job
 echo "SHELL=/bin/bash" > /etc/cron.d/fan_control
 echo "PATH=$PATH" >> /etc/cron.d/fan_control
@@ -25,3 +21,4 @@ env > /usr/local/bin/env_file
 # Start cron in foreground
 echo "Starting cron..."
 exec cron -f
+
