@@ -19,6 +19,3 @@ if [ ! -f "$SCRIPT_PATH" ]; then
 
     chmod +x "$SCRIPT_PATH"
 fi
-
-# Keep container running
-tail -f /dev/null
