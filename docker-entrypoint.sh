@@ -24,5 +24,4 @@ env > /usr/local/bin/env_file
 
 # Start cron in foreground
 echo "Starting cron..."
-exec cron
-exec "$@"
+exec cron -f
