@@ -3,7 +3,7 @@
   <Name>minimal-liquidctl</Name>
   <Repository>zuluuk/minimal-liquidctl:latest</Repository>
   <Registry>https://hub.docker.com/r/zuluuk/minimal-liquidctl</Registry>
-  <Network>none</Network>
+  <Network>containernet</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>true</Privileged>
@@ -20,7 +20,7 @@
   <ExtraParams>--log-opt max-size=5m --privileged -v /dev/bus/usb:/dev/bus/usb</ExtraParams>
   <PostArgs/>
   <CPUset/>
-  <DateInstalled>1754720110</DateInstalled>
+  <DateInstalled>1754853079</DateInstalled>
   <DonateText/>
   <DonateLink/>
   <Requires/>
