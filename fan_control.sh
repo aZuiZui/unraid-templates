@@ -199,4 +199,3 @@ done
 echo "----"
 echo -e "\033[1mFan control script complete.\033[0m"
 echo "----"
-whoami
