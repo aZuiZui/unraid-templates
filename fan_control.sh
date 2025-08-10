@@ -11,6 +11,7 @@ env > /usr/local/data/env_file1
 set -a
 source /usr/local/bin/env_file
 set +a
+env > /usr/local/data/env_file2
 
 echo "$(date): Script executed"
 
