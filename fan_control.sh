@@ -6,6 +6,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Redirect all output to Docker or systemd logs
 exec > /proc/1/fd/1 2>&1
 
+env > /usr/local/data/env_file1
 # Load environment variables
 set -a
 source /usr/local/bin/env_file
