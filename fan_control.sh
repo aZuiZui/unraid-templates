@@ -98,10 +98,10 @@ HDD_TEMP=$(( DRIVE_COUNT > 0 ? TEMP_SUM / DRIVE_COUNT : 0 ))
 # Fan 1 speed (HDD)
 if (( DRIVE_COUNT == 0 && STANDBY_DRIVE_COUNT > 0 )); then
   FAN1_SPEED=0
-  echo "All HDDs are in standby. Fan 1 is turned off."
+  #echo "All HDDs are in standby. Fan 1 is turned off."
 else
   FAN1_SPEED=$(get_fan_speed "$HDD_TEMP" HDD_THRESHOLDS FAN1_SPEEDS)
-  echo "Fan 1: $FAN1_SPEED%"
+  #echo "Fan 1: $FAN1_SPEED%"
 fi
 
 # =========================
@@ -131,7 +131,7 @@ NVME_TEMP=$(( NVME_COUNT > 0 ? NVME_TEMP_SUM / NVME_COUNT : 0 ))
 
 # Fan 2 speed (NVMe)
 FAN2_SPEED=$(get_fan_speed "$NVME_TEMP" NVME_THRESHOLDS FAN2_SPEEDS)
-echo "Fan 2: $FAN2_SPEED%"
+# echo "Fan 2: $FAN2_SPEED%"
 
 # =========================
 # Motherboard Temperature
@@ -152,7 +152,7 @@ fi
 # Fan 3 speed (MB)
 FAN3_SPEED=$(get_fan_speed "$MB_TEMP" MB_THRESHOLDS FAN3_SPEEDS)
 (( FAN3_SPEED < 10 )) && FAN3_SPEED=10
-echo "Fan 3: $FAN3_SPEED%"
+#echo "Fan 3: $FAN3_SPEED%"
 
 # =========================
 # Apply Fan Speeds
@@ -188,7 +188,7 @@ for ((fan=1; fan<=FAN_QUANTITY; fan++)); do
       FAN_RPM_UPDATE=$(liquidctl status | awk -F '  ' '/Fan '"$fan"' speed/ {print $(NF-1)}')
       (( FAN_RPM_UPDATE <= 0 )) && echo "Fan$fan RPM is STILL zero. Check connections or shutdown."
     else
-      echo "Fan$fan RPM is zero, but temperature is $TEMP°C. Skipping restart."
+      #echo "Fan$fan RPM is zero, but temperature is $TEMP°C. Skipping restart."
     fi
   else
     liquidctl set fan$fan speed "$DESIRED_SPEED" >/dev/null 2>&1
