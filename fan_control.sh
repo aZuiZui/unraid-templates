@@ -139,15 +139,6 @@ fi
 FAN3_SPEED=$(get_fan_speed "$MB_TEMP" MB_THRESHOLDS FAN3_SPEEDS)
 
 # =========================
-# Quiet hours override
-# =========================
-if is_quiet_hours; then
-  (( HDD_TEMP < 40 )) && FAN1_SPEED=10
-  (( NVME_TEMP < 40 )) && FAN2_SPEED=10
-  (( MB_TEMP < 40 )) && FAN3_SPEED=10
-fi
-
-# =========================
 # Apply Fan Speeds
 # =========================
 for ((fan=1; fan<=FAN_QUANTITY; fan++)); do
