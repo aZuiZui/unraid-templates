@@ -234,4 +234,4 @@ done
 
 echo "----"
 echo "Fan control script complete."
-echo "----"
+echo "----" 
