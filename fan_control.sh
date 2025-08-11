@@ -173,51 +173,37 @@ done
 # Fan Summary Table
 # =========================
 echo "---- Fan Summary ----"
-printf "%-5s %-10s %-8s %-8s %-25s %-7s %-7s\n" "Fan" "Temp(°C)" "Speed(%)" "Status" "Source" "Online" "Standby"
-
-HDD_DRIVES=$(ls /dev/sd* 2>/dev/null | grep -v '[0-9]$')
-[ -n "$EXCLUDED_PATTERN" ] && HDD_DRIVES=$(echo "$HDD_DRIVES" | grep -vE "$EXCLUDED_PATTERN")
-HDD_DRIVES_LIST=$(echo "$HDD_DRIVES" | tr '\n' ',' | sed 's/,$//')
-
-NVME_DRIVES=$(ls /dev/nvme*n* 2>/dev/null | grep -v p)
-NVME_DRIVES_LIST=$(echo "$NVME_DRIVES" | tr '\n' ',' | sed 's/,$//')
+printf "%-5s %-10s %-8s %-13s %-13s\n" "Fan" "Temp(°C)" "Speed(%)" "Online Drive" "Standby Drive"
 
 for ((fan=1; fan<=FAN_QUANTITY; fan++)); do
   case $fan in
     1)
       TEMP=$HDD_TEMP
       SPEED=$FAN1_SPEED
-      SOURCE="HDD: $HDD_DRIVES_LIST"
       ONLINE=$DRIVE_COUNT
       STANDBY=$STANDBY_DRIVE_COUNT
       ;;
     2)
       TEMP=$NVME_TEMP
       SPEED=$FAN2_SPEED
-      SOURCE="NVMe: $NVME_DRIVES_LIST"
       ONLINE=$NVME_COUNT
       STANDBY=$STANDBY_NVME_COUNT
       ;;
     3)
       TEMP=$MB_TEMP
       SPEED=$FAN3_SPEED
-      SOURCE="MB"
       ONLINE="-"
       STANDBY="-"
       ;;
     *)
       TEMP="N/A"
       SPEED="N/A"
-      SOURCE="Unknown"
       ONLINE="-"
       STANDBY="-"
       ;;
   esac
 
-  RPM=$(liquidctl status | awk -F '  ' '/Fan '"$fan"' speed/ {print $(NF-1)}')
-  STATUS=$([[ $RPM =~ ^[0-9]+$ ]] && (( RPM > 0 )) && echo "OK" || echo "Check")
-
-  printf "%-5s %-10s %-8s %-8s %-25s %-7s %-7s\n" "$fan" "$TEMP" "$SPEED" "$STATUS" "$SOURCE" "$ONLINE" "$STANDBY"
+  printf "%-5s %-10s %-8s %-13s %-13s\n" "$fan" "$TEMP" "$SPEED" "$ONLINE" "$STANDBY"
 done
 
 echo "----"
