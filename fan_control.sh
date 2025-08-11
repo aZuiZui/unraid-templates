@@ -90,10 +90,10 @@ done
 
 HDD_TEMP=$(( DRIVE_COUNT > 0 ? TEMP_SUM / DRIVE_COUNT : 0 ))
 
-echo "----"
-echo "HDD average temperature: $HDD_TEMP°C"
-echo "Number of HDD drives online: $DRIVE_COUNT"
-echo "Number of HDD drives in standby: $STANDBY_DRIVE_COUNT"
+#echo "----"
+#echo "HDD average temperature: $HDD_TEMP°C"
+#echo "Number of HDD drives online: $DRIVE_COUNT"
+#echo "Number of HDD drives in standby: $STANDBY_DRIVE_COUNT"
 
 # Fan 1 speed (HDD)
 if (( DRIVE_COUNT == 0 && STANDBY_DRIVE_COUNT > 0 )); then
@@ -124,10 +124,10 @@ done
 
 NVME_TEMP=$(( NVME_COUNT > 0 ? NVME_TEMP_SUM / NVME_COUNT : 0 ))
 
-echo "----"
-echo "NVMe average temperature: $NVME_TEMP°C"
-echo "Number of NVMe drives online: $NVME_COUNT"
-echo "Number of NVMe drives in standby: $STANDBY_NVME_COUNT"
+#echo "----"
+#echo "NVMe average temperature: $NVME_TEMP°C"
+#echo "Number of NVMe drives online: $NVME_COUNT"
+#echo "Number of NVMe drives in standby: $STANDBY_NVME_COUNT"
 
 # Fan 2 speed (NVMe)
 FAN2_SPEED=$(get_fan_speed "$NVME_TEMP" NVME_THRESHOLDS FAN2_SPEEDS)
@@ -146,8 +146,8 @@ else
   done)
 fi
 
-echo "----"
-echo "MB temperature: $MB_TEMP°C"
+#echo "----"
+#echo "MB temperature: $MB_TEMP°C"
 
 # Fan 3 speed (MB)
 FAN3_SPEED=$(get_fan_speed "$MB_TEMP" MB_THRESHOLDS FAN3_SPEEDS)
