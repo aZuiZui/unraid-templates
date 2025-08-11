@@ -71,7 +71,7 @@ get_fan_speed() {
 EXCLUDED_PATTERN=""
 [ -n "$EXCLUDED_DRIVES_ENV" ] && EXCLUDED_PATTERN=$(echo "$EXCLUDED_DRIVES_ENV" | tr ',' '|')
 
-drives=$(ls /dev/sd* | grep -v '[0-9]$')
+drives=$(ls /dev/sd* 2>/dev/null | grep -v '[0-9]$')
 [ -n "$EXCLUDED_PATTERN" ] && drives=$(echo "$drives" | grep -vE "$EXCLUDED_PATTERN")
 
 DRIVE_COUNT=0
@@ -90,24 +90,21 @@ done
 
 HDD_TEMP=$(( DRIVE_COUNT > 0 ? TEMP_SUM / DRIVE_COUNT : 0 ))
 
-echo "----"
-echo "HDD average temperature: $HDD_TEMP°C"
-echo "Number of HDD drives online: $DRIVE_COUNT"
-echo "Number of HDD drives in standby: $STANDBY_DRIVE_COUNT"
-
-# Fan 1 speed (HDD)
 if (( DRIVE_COUNT == 0 && STANDBY_DRIVE_COUNT > 0 )); then
   FAN1_SPEED=0
-  echo "All HDDs are in standby. Fan 1 is turned off."
 else
   FAN1_SPEED=$(get_fan_speed "$HDD_TEMP" HDD_THRESHOLDS FAN1_SPEEDS)
-  echo "Fan 1: $FAN1_SPEED%"
 fi
+
+echo "---- HDD Status ----"
+printf "%-30s %s°C\n" "HDD average temperature:" "$HDD_TEMP"
+printf "%-30s %s\n" "Drives online:" "$DRIVE_COUNT"
+printf "%-30s %s\n" "Drives in standby:" "$STANDBY_DRIVE_COUNT"
 
 # =========================
 # NVMe Temperature
 # =========================
-nvme_drives=$(ls /dev/nvme*n* | grep -v p)
+nvme_drives=$(ls /dev/nvme*n* 2>/dev/null | grep -v p)
 NVME_TEMP_SUM=0
 NVME_COUNT=0
 STANDBY_NVME_COUNT=0
@@ -124,14 +121,12 @@ done
 
 NVME_TEMP=$(( NVME_COUNT > 0 ? NVME_TEMP_SUM / NVME_COUNT : 0 ))
 
-echo "----"
-echo "NVMe average temperature: $NVME_TEMP°C"
-echo "Number of NVMe drives online: $NVME_COUNT"
-echo "Number of NVMe drives in standby: $STANDBY_NVME_COUNT"
-
-# Fan 2 speed (NVMe)
 FAN2_SPEED=$(get_fan_speed "$NVME_TEMP" NVME_THRESHOLDS FAN2_SPEEDS)
-echo "Fan 2: $FAN2_SPEED%"
+
+echo "---- NVMe Status ----"
+printf "%-30s %s°C\n" "NVMe average temperature:" "$NVME_TEMP"
+printf "%-30s %s\n" "Drives online:" "$NVME_COUNT"
+printf "%-30s %s\n" "Drives in standby:" "$STANDBY_NVME_COUNT"
 
 # =========================
 # Motherboard Temperature
@@ -146,13 +141,11 @@ else
   done)
 fi
 
-echo "----"
-echo "MB temperature: $MB_TEMP°C"
-
-# Fan 3 speed (MB)
 FAN3_SPEED=$(get_fan_speed "$MB_TEMP" MB_THRESHOLDS FAN3_SPEEDS)
 (( FAN3_SPEED < 10 )) && FAN3_SPEED=10
-echo "Fan 3: $FAN3_SPEED%"
+
+echo "---- Motherboard Status ----"
+printf "%-30s %s°C\n" "Motherboard temperature:" "$MB_TEMP"
 
 # =========================
 # Apply Fan Speeds
@@ -193,6 +186,53 @@ for ((fan=1; fan<=FAN_QUANTITY; fan++)); do
   else
     liquidctl set fan$fan speed "$DESIRED_SPEED" >/dev/null 2>&1
   fi
+done
+
+# =========================
+# Fan Summary Table
+# =========================
+echo "---- Fan Summary ----"
+printf "%-10s %-12s %-10s %-10s %-25s %-8s %-8s\n" "Fan" "Temp(°C)" "Speed(%)" "Status" "Source" "Online" "Standby"
+
+HDD_DRIVES=$(ls /dev/sd* 2>/dev/null | grep -v '[0-9]$')
+[ -n "$EXCLUDED_PATTERN" ] && HDD_DRIVES=$(echo "$HDD_DRIVES" | grep -vE "$EXCLUDED_PATTERN")
+HDD_DRIVES_LIST=$(echo "$HDD_DRIVES" | tr '\n' ',' | sed 's/,$//')
+
+NVME_DRIVES=$(ls /dev/nvme*n* 2>/dev/null | grep -v p)
+NVME_DRIVES_LIST=$(echo "$NVME_DRIVES" | tr '\n' ',' | sed 's/,$//')
+
+for ((fan=1; fan<=FAN_QUANTITY; fan++)); do
+  case $fan in
+    1)
+      TEMP=$HDD_TEMP
+      SPEED=$FAN1_SPEED
+      SOURCE="HDD: $HDD_DRIVES_LIST"
+      ONLINE=$DRIVE_COUNT
+      STANDBY=$STANDBY_DRIVE_COUNT
+      ;;
+    2)
+      TEMP=$NVME_TEMP
+      SPEED=$FAN2_SPEED
+      SOURCE="NVMe: $NVME_DRIVES_LIST"
+      ONLINE=$NVME_COUNT
+      STANDBY=$STANDBY_NVME_COUNT
+      ;;
+    3)
+      TEMP=$MB_TEMP
+      SPEED=$FAN3_SPEED
+      SOURCE="MB"
+      ONLINE="-"
+      STANDBY="-"
+      ;;
+    *)
+      TEMP="N/A"; SPEED="N/A"; STATUS="Unknown"; SOURCE="Unknown"; ONLINE="-"; STANDBY="-"
+      ;;
+  esac
+
+  RPM=$(liquidctl status | awk -F '  ' '/Fan '"$fan"' speed/ {print $(NF-1)}')
+  STATUS=$([[ $RPM =~ ^[0-9]+$ ]] && (( RPM > 0 )) && echo "OK" || echo "Check")
+
+  printf "Fan%-7s %-12s %-10s %-10s %-25s %-8s %-8s\n" "$fan" "$TEMP" "$SPEED" "$STATUS" "$SOURCE" "$ONLINE" "$STANDBY"
 done
 
 echo "----"
