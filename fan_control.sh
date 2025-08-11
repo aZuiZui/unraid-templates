@@ -180,4 +180,4 @@ HDD_DRIVES=$(ls /dev/sd* 2>/dev/null | grep -v '[0-9]$')
 HDD_DRIVES_LIST=$(echo "$HDD_DRIVES" | tr '\n' ',' | sed 's/,$//')
 
 NVME_DRIVES=$(ls /dev/nvme*n* 2>/dev/null | grep -v p)
-NVME_DRIVES_LIST=$(echo "$NV
+NVME_DRIVES_LIST=$(echo "$NVME_DRIVES" | tr '\n' ',' | sed 's/,$//')
