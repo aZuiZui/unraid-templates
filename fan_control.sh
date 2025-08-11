@@ -15,9 +15,9 @@ echo "$(date): Script executed"
 
 # Initialize liquidctl if not already
 if liquidctl status &> /dev/null; then
-  echo "liquidctl is initialized."
+  echo -e "\033[1mliquidctl is initialized.\033[0m"
 else
-  echo "liquidctl is not initialized. Initializing..."
+  echo -e "\033[1mliquidctl is not initialized. Initializing...\033[0m"
   liquidctl initialize all
 fi
 
@@ -71,7 +71,7 @@ get_fan_speed() {
 EXCLUDED_PATTERN=""
 [ -n "$EXCLUDED_DRIVES_ENV" ] && EXCLUDED_PATTERN=$(echo "$EXCLUDED_DRIVES_ENV" | tr ',' '|')
 
-drives=$(ls /dev/sd* 2>/dev/null | grep -v '[0-9]$')
+drives=$(ls /dev/sd* | grep -v '[0-9]$')
 [ -n "$EXCLUDED_PATTERN" ] && drives=$(echo "$drives" | grep -vE "$EXCLUDED_PATTERN")
 
 DRIVE_COUNT=0
@@ -89,12 +89,25 @@ for drive in $drives; do
 done
 
 HDD_TEMP=$(( DRIVE_COUNT > 0 ? TEMP_SUM / DRIVE_COUNT : 0 ))
-FAN1_SPEED=$(( DRIVE_COUNT == 0 && STANDBY_DRIVE_COUNT > 0 ? 0 : $(get_fan_speed "$HDD_TEMP" HDD_THRESHOLDS FAN1_SPEEDS) ))
+
+echo "----"
+echo "HDD average temperature: $HDD_TEMP°C"
+echo "Number of HDD drives online: $DRIVE_COUNT"
+echo "Number of HDD drives in standby: $STANDBY_DRIVE_COUNT"
+
+# Fan 1 speed (HDD)
+if (( DRIVE_COUNT == 0 && STANDBY_DRIVE_COUNT > 0 )); then
+  FAN1_SPEED=0
+  echo "All HDDs are in standby. Fan 1 is turned off."
+else
+  FAN1_SPEED=$(get_fan_speed "$HDD_TEMP" HDD_THRESHOLDS FAN1_SPEEDS)
+  echo "Fan 1: $FAN1_SPEED%"
+fi
 
 # =========================
 # NVMe Temperature
 # =========================
-nvme_drives=$(ls /dev/nvme*n* 2>/dev/null | grep -v p)
+nvme_drives=$(ls /dev/nvme*n* | grep -v p)
 NVME_TEMP_SUM=0
 NVME_COUNT=0
 STANDBY_NVME_COUNT=0
@@ -110,7 +123,15 @@ for drive in $nvme_drives; do
 done
 
 NVME_TEMP=$(( NVME_COUNT > 0 ? NVME_TEMP_SUM / NVME_COUNT : 0 ))
+
+echo "----"
+echo "NVMe average temperature: $NVME_TEMP°C"
+echo "Number of NVMe drives online: $NVME_COUNT"
+echo "Number of NVMe drives in standby: $STANDBY_NVME_COUNT"
+
+# Fan 2 speed (NVMe)
 FAN2_SPEED=$(get_fan_speed "$NVME_TEMP" NVME_THRESHOLDS FAN2_SPEEDS)
+echo "Fan 2: $FAN2_SPEED%"
 
 # =========================
 # Motherboard Temperature
@@ -125,8 +146,13 @@ else
   done)
 fi
 
+echo "----"
+echo "MB temperature: $MB_TEMP°C"
+
+# Fan 3 speed (MB)
 FAN3_SPEED=$(get_fan_speed "$MB_TEMP" MB_THRESHOLDS FAN3_SPEEDS)
 (( FAN3_SPEED < 10 )) && FAN3_SPEED=10
+echo "Fan 3: $FAN3_SPEED%"
 
 # =========================
 # Apply Fan Speeds
