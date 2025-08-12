@@ -135,8 +135,11 @@ else
   done)
 fi
 
-# Fan 3 speed (MB)
+# Fan 3 speed (MB) with NVMe override
 FAN3_SPEED=$(get_fan_speed "$MB_TEMP" MB_THRESHOLDS FAN3_SPEEDS)
+if (( NVME_TEMP > 40 )); then
+  FAN3_SPEED=$FAN2_SPEED
+fi
 
 # =========================
 # Apply Fan Speeds
