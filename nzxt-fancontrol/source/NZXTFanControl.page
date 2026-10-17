@@ -120,11 +120,15 @@ Notifications:
 
 > Unraid notifications when a fan stops, the controller goes missing, or the watchdog restarts the service.
 
-Dashboard tile:
+Dashboard:
 : <select name="DASHBOARD">
-  <?=mk_option($cfg['DASHBOARD'], "yes", "Show")?>
+  <?=mk_option($cfg['DASHBOARD'] == 'yes' ? 'airflow' : $cfg['DASHBOARD'], "airflow", "Add to Airflow tile")?>
+  <?=mk_option($cfg['DASHBOARD'], "tile", "Own tile")?>
   <?=mk_option($cfg['DASHBOARD'], "no", "Hide")?>
   </select>
+
+> "Add to Airflow tile" puts the fan names and set speed on Unraid's own Airflow tile (hover for temperatures).
+> It falls back to a separate tile if the Airflow tile isn't there.
 
 &nbsp;
 : <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
