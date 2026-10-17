@@ -1,12 +1,20 @@
 #!/bin/bash
-# start|stop|restart|reload|status for the NZXT fan control daemon.
+# start|stop|restart|apply|reload|identify|watchdog|status for the NZXT fan control daemon.
 
 PLUGIN=nzxt-fancontrol
 DAEMON=/usr/local/emhttp/plugins/$PLUGIN/scripts/fancontrol.sh
 PIDFILE=/var/run/$PLUGIN.pid
+IDENTIFY=/var/run/$PLUGIN.identify
 CFG=/boot/config/plugins/$PLUGIN/$PLUGIN.cfg
+IDENTIFY_SECONDS=10
 
 running() { [[ -f $PIDFILE ]] && kill -0 "$(< "$PIDFILE")" 2>/dev/null; }
+
+enabled() {
+  local SERVICE=enable
+  [[ -f $CFG ]] && source "$CFG"
+  [[ $SERVICE == enable ]]
+}
 
 start() {
   running && { echo "$PLUGIN already running"; return 0; }
@@ -25,20 +33,41 @@ stop() {
   echo "$PLUGIN stopped"
 }
 
-# Called by the settings page after saving: honour the enable/disable switch.
+# Called by the settings page after saving. Reloads in place so the fans don't blip to the safe speed.
 apply() {
-  local SERVICE=enable
+  if ! enabled; then stop
+  elif running; then kill -HUP "$(< "$PIDFILE")"; echo "$PLUGIN settings reloaded"
+  else start
+  fi
+}
+
+identify() {
+  [[ $1 =~ ^[1-3]$ ]] || { echo "usage: $0 identify 1|2|3"; return 1; }
+  running || { echo "$PLUGIN is not running"; return 1; }
+  echo "$1 $(( $(date +%s) + IDENTIFY_SECONDS ))" > "$IDENTIFY"
+  kill -USR1 "$(< "$PIDFILE")"
+  echo "fan $1 at 100% for ${IDENTIFY_SECONDS}s"
+}
+
+# Run from cron: restarts the daemon if it died while the service is enabled.
+watchdog() {
+  enabled && ! running || return 0
+  local NOTIFY=yes
   [[ -f $CFG ]] && source "$CFG"
-  stop
-  [[ $SERVICE == enable ]] && start
+  logger -t "$PLUGIN" "watchdog: daemon was not running, restarting"
+  [[ $NOTIFY == yes ]] && /usr/local/emhttp/webGui/scripts/notify -e "NZXT Fan Control" -i warning -s "Fan control restarted" \
+    -d "The fan control daemon had stopped and was restarted by the watchdog." >/dev/null 2>&1
+  start
 }
 
 case $1 in
-  start)   start ;;
-  stop)    stop ;;
-  restart) stop; start ;;
-  apply)   apply ;;
-  reload)  running && kill -HUP "$(< "$PIDFILE")" ;;
-  status)  running && echo "$PLUGIN running (pid $(< "$PIDFILE"))" || { echo "$PLUGIN stopped"; exit 1; } ;;
-  *)       echo "usage: $0 start|stop|restart|apply|reload|status"; exit 1 ;;
+  start)    start ;;
+  stop)     stop ;;
+  restart)  stop; start ;;
+  apply)    apply ;;
+  reload)   running && kill -HUP "$(< "$PIDFILE")" ;;
+  identify) identify "$2" ;;
+  watchdog) watchdog ;;
+  status)   running && echo "$PLUGIN running (pid $(< "$PIDFILE"))" || { echo "$PLUGIN stopped"; exit 1; } ;;
+  *)        echo "usage: $0 start|stop|restart|apply|reload|identify <fan>|watchdog|status"; exit 1 ;;
 esac

@@ -1,0 +1,60 @@
+Menu="Dashboard:0"
+Cond="(@parse_ini_file('/boot/config/plugins/nzxt-fancontrol/nzxt-fancontrol.cfg')['DASHBOARD'] ?? 'yes') != 'no'"
+---
+<?PHP
+$pluginname = "nzxt-fancontrol";
+
+$mytiles[$pluginname]['column2'] =
+<<<EOT
+<tbody id="nzdash" title="_(NZXT Fan Control)_">
+<tr>
+  <td>
+    <span class='tile-header'>
+      <span class='tile-header-left'>
+        <i class='fa fa-snowflake-o f32'></i>
+        <div class='section'>
+          <h3 class='tile-header-main'>_(Fans)_</h3>
+          <span id='nzdash-state'>_(Loading)_...</span><br>
+        </div>
+      </span>
+      <span class='tile-header-right'>
+        <span class='tile-header-right-controls'>
+          <a href="/Settings/NZXTFanControl" title="_(Fan control settings)_"><i class="fa fa-fw fa-cog control"></i></a>
+        </span>
+      </span>
+    </span>
+  </td>
+</tr>
+<tr><td id="nzdash-fans"></td></tr>
+</tbody>
+EOT;
+?>
+<style>
+#nzdash-fans .nzd-row{display:grid;grid-template-columns:minmax(0,1fr) 3.5em 7em 5em;align-items:center;gap:8px;padding:3px 0;font-variant-numeric:tabular-nums}
+#nzdash-fans .nzd-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#nzdash-fans .nzd-bar{position:relative;height:14px;border-radius:3px;background:rgba(128,128,128,.2);overflow:hidden}
+#nzdash-fans .nzd-bar span{position:absolute;inset:0 auto 0 0;background:#3987e5;border-radius:3px}
+#nzdash-fans .nzd-bar b{position:relative;display:block;text-align:center;font-size:11px;line-height:14px;font-weight:normal}
+#nzdash-fans .nzd-rpm,#nzdash-fans .nzd-temp{text-align:right}
+#nzdash-fans .nzd-note{grid-column:1/-1;opacity:.75;font-size:.9em;margin-top:-2px}
+</style>
+<script>
+function nzDashRefresh() {
+  $.get('/plugins/nzxt-fancontrol/include/status.php', function(d) {
+    var box = $('#nzdash-fans');
+    if (!box.length) return;
+    $('#nzdash-state').text(d.controller === 'missing' ? 'Controller missing' : (d.fans.length ? 'Running' : 'Stopped'));
+    box.html(d.fans.map(function(f) {
+      return '<div class="nzd-row"><span class="nzd-name" title="' + f.source + '">' + f.name + '</span>' +
+        '<span class="nzd-temp">' + (f.temp === null ? '-' : f.temp + '&deg;C') + '</span>' +
+        '<span class="nzd-bar"><span style="width:' + f.speed + '%"></span><b>' + f.speed + '%</b></span>' +
+        '<span class="nzd-rpm">' + f.rpm + ' rpm</span>' +
+        (f.note ? '<span class="nzd-note">' + f.note + '</span>' : '') + '</div>';
+    }).join('') || '<span class="nzd-note">No data</span>');
+  }, 'json');
+}
+$(function() {
+  nzDashRefresh();
+  setInterval(nzDashRefresh, 10000);
+});
+</script>

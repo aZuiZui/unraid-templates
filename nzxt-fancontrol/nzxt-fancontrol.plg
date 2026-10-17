@@ -2,16 +2,23 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "nzxt-fancontrol">
 <!ENTITY author    "aZuiZui">
-<!ENTITY version   "2026.10.17">
+<!ENTITY version   "2026.10.17d">
 <!ENTITY launch    "Settings/NZXTFanControl">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/aZuiZui/unraid-templates/main/nzxt-fancontrol/nzxt-fancontrol.plg">
+<!ENTITY support   "https://github.com/aZuiZui/unraid-templates/issues">
 <!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
 <!ENTITY flash     "/boot/config/plugins/&name;">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.12.0" icon="snowflake-o">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="&support;" min="6.12.0" icon="snowflake-o">
 
 <CHANGES>
+###2026.10.17c
+- Fan curve editor: one row per step (temperature and fan speed), add/remove/reset
+- Fan speed now ramps linearly between curve points instead of jumping in steps
+- "Cool and quiet" preset button that fills in a curve for every fan
+- Live curve chart per fan with the current temperature and speed marked
+
 ###2026.10.17
 - Initial release: replaces the minimal-liquidctl Docker container
 - Uses the in-kernel nzxt-smart2 driver (no liquidctl / Python / Docker)
@@ -31,6 +38,10 @@ exit 0
 <FILE Name="&emhttp;/default.cfg">
 <INLINE><![CDATA[SERVICE="enable"
 INTERVAL="60"
+FAN1_NAME="HDD fan"
+FAN2_NAME="NVMe fan"
+FAN3_NAME="Case fan"
+HDD_TEMP_MODE="max"
 HDD_THRESHOLDS="30,35,40,45,50"
 FAN1_SPEEDS="20,30,40,50,100"
 HDD_IDLE_SPEED="0"
@@ -43,6 +54,8 @@ FAN3_SPEEDS="20,25,30,40,100"
 FAN3_FOLLOW_NVME_ABOVE="40"
 FAN_QUANTITY="3"
 STOP_SPEED="60"
+NOTIFY="yes"
+DASHBOARD="yes"
 ]]></INLINE>
 </FILE>
 
@@ -55,54 +68,71 @@ Tag="snowflake-o"
 <?PHP
 $plugin = "nzxt-fancontrol";
 $cfg = parse_plugin_cfg($plugin);
+$defaults = parse_ini_file("/usr/local/emhttp/plugins/$plugin/default.cfg");
 $running = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
-$list = '^\s*\d+(\s*,\s*\d+)*\s*$';
 ?>
 <style>
-table.nzxt{width:auto;margin:0 0 20px 0}
-table.nzxt td,table.nzxt th{padding:4px 16px 4px 0;text-align:left}
+#nzxt{--nz-series:#2a78d6;--nz-grid:rgba(128,128,128,.22);--nz-muted:rgba(128,128,128,.95);--nz-border:rgba(128,128,128,.3);--nz-bad:#d03b3b}
+#nzxt.nz-dark{--nz-series:#3987e5;--nz-bad:#e66767}
+#nzxt .nz-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,560px),1fr));gap:16px;margin:12px 0 20px}
+#nzxt .nz-card{border:1px solid var(--nz-border);border-radius:6px;padding:12px 14px}
+#nzxt .nz-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px}
+#nzxt .nz-title{font-weight:bold;font-size:1.15em}
+#nzxt .nz-live{color:var(--nz-muted);font-variant-numeric:tabular-nums}
+#nzxt .nz-live b{color:inherit}
+#nzxt .nz-body{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-start}
+#nzxt table.nz-steps{width:auto;margin:0;border-collapse:collapse}
+#nzxt table.nz-steps th{font-weight:normal;color:var(--nz-muted);text-align:left;padding:0 6px 4px 0;white-space:nowrap}
+#nzxt table.nz-steps td{padding:2px 6px 2px 0;white-space:nowrap;border:0}
+#nzxt table.nz-steps input[type=number]{width:62px!important;min-width:0!important;margin:0!important;padding:3px 4px!important;text-align:right}
+#nzxt table.nz-steps input.nz-invalid{outline:2px solid var(--nz-bad)}
+#nzxt .nz-x{min-width:0!important;margin:0!important;padding:2px 8px!important}
+#nzxt .nz-actions{margin-top:6px}
+#nzxt .nz-actions input{margin:0 6px 0 0!important}
+#nzxt .nz-hint{color:var(--nz-muted);font-size:.9em;margin-top:6px;max-width:240px}
+#nzxt .nz-chart{position:relative;flex:1 1 300px;min-width:260px}
+#nzxt svg{display:block;width:100%;height:auto;overflow:visible}
+#nzxt svg text{fill:currentColor;font-size:11px}
+#nzxt svg .nz-axis text{fill:var(--nz-muted)}
+#nzxt .nz-tip{position:absolute;pointer-events:none;padding:3px 7px;border-radius:4px;border:1px solid var(--nz-border);background:var(--nz-surface,#fff);white-space:nowrap;font-size:12px;display:none;transform:translate(-50%,-130%)}
+#nzxt .nz-error{color:var(--nz-bad);margin-top:4px}
+#nzxt .nz-presets{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:12px}
+#nzxt .nz-presets input{margin:0!important}
+#nzxt .nz-presets span{color:var(--nz-muted)}
+#nzxt .nz-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+#nzxt .nz-title input{width:170px!important;min-width:0!important;margin:0!important;padding:2px 6px!important;font-weight:bold;font-size:1em}
+#nzxt .nz-sub{color:var(--nz-muted);font-weight:normal;font-size:.9em}
+#nzxt .nz-note{display:block;color:var(--nz-muted);font-size:.9em;margin-top:2px;text-align:right}
+#nzxt .nz-warn{color:var(--nz-bad)}
 </style>
 
-<div markdown="1">
-**Status:** <span id="nzxt-state"><?=htmlspecialchars($running)?></span>
+<div id="nzxt">
+<p><b>Status:</b> <span id="nz-state"><?=htmlspecialchars($running)?></span></p>
 
-<table class="nzxt">
-<thead><tr><th>Fan</th><th>Source</th><th>Temp (&deg;C)</th><th>Speed (%)</th><th>RPM</th></tr></thead>
-<tbody id="nzxt-status"><tr><td colspan="5">Loading...</td></tr></tbody>
-</table>
-</div>
-
-<form markdown="1" name="nzxt_settings" method="POST" action="/update.php" target="progressFrame">
+<form markdown="1" name="nzxt_settings" method="POST" action="/update.php" target="progressFrame" onsubmit="return nzSubmit(this)">
 <input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
 <input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/rc.<?=$plugin?>">
 <input type="hidden" name="#arg[1]" value="apply">
+<?foreach (['HDD_THRESHOLDS','FAN1_SPEEDS','NVME_THRESHOLDS','FAN2_SPEEDS','MB_THRESHOLDS','FAN3_SPEEDS'] as $key):?>
+<input type="hidden" name="<?=$key?>" value="<?=htmlspecialchars($cfg[$key])?>" data-default="<?=htmlspecialchars($defaults[$key])?>">
+<?endforeach;?>
 
-Fan control service:
-: <select name="SERVICE">
-  <?=mk_option($cfg['SERVICE'], "enable", "Enabled")?>
-  <?=mk_option($cfg['SERVICE'], "disable", "Disabled")?>
+<div class="nz-presets">
+<input type="button" value="Cool &amp; quiet" onclick="nzPreset('quiet')" title="Quiet in the normal range, full speed before Unraid's temperature warnings">
+<span id="nz-preset-note">Fills in a curve for every fan. Nothing changes until you click Apply.</span>
+</div>
+
+<div class="nz-cards" id="nz-cards"></div>
+
+<h3>Fan rules</h3>
+
+Drive temperature used:
+: <select name="HDD_TEMP_MODE">
+  <?=mk_option($cfg['HDD_TEMP_MODE'], "max", "Hottest drive")?>
+  <?=mk_option($cfg['HDD_TEMP_MODE'], "avg", "Average of all drives")?>
   </select>
 
-Check interval (seconds):
-: <input type="number" name="INTERVAL" min="5" max="600" value="<?=$cfg['INTERVAL']?>" class="narrow">
-
-Number of fans:
-: <select name="FAN_QUANTITY">
-  <?=mk_option($cfg['FAN_QUANTITY'], "1", "1")?>
-  <?=mk_option($cfg['FAN_QUANTITY'], "2", "2")?>
-  <?=mk_option($cfg['FAN_QUANTITY'], "3", "3")?>
-  </select>
-
-> Temperature thresholds and fan speeds are comma-separated lists of the same length.
-> When the temperature reaches a threshold, the fan runs at the matching speed; below the first threshold it uses the first speed.
-
-<h3>Fan 1: array hard drives</h3>
-
-HDD temperature thresholds (&deg;C):
-: <input type="text" name="HDD_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['HDD_THRESHOLDS']?>">
-
-Fan 1 speeds (%):
-: <input type="text" name="FAN1_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN1_SPEEDS']?>">
+> Applies to both the hard drives (fan 1) and the NVMe drives (fan 2). "Hottest drive" stops one hot drive hiding behind cool ones.
 
 Fan 1 speed when all drives are spun down (%):
 : <input type="number" name="HDD_IDLE_SPEED" min="0" max="100" value="<?=$cfg['HDD_IDLE_SPEED']?>" class="narrow">
@@ -110,52 +140,361 @@ Fan 1 speed when all drives are spun down (%):
 Excluded drives:
 : <input type="text" name="EXCLUDED_DRIVES" value="<?=$cfg['EXCLUDED_DRIVES']?>" placeholder="e.g. sdb,disk5">
 
-> Temperatures come from Unraid's own disk status, so spun-down drives are never woken.
+> HDD temperatures come from Unraid's own disk status, so spun-down drives are never woken.
 > Exclude drives by device (sdb) or array slot (parity, disk5), comma-separated.
 
-<h3>Fan 2: NVMe</h3>
-
-NVMe temperature thresholds (&deg;C):
-: <input type="text" name="NVME_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['NVME_THRESHOLDS']?>">
-
-Fan 2 speeds (%):
-: <input type="text" name="FAN2_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN2_SPEEDS']?>">
-
-<h3>Fan 3: motherboard</h3>
-
-Motherboard sensor (hwmon name):
-: <input type="text" name="MB_SENSOR" value="<?=$cfg['MB_SENSOR']?>" class="narrow">
-
-Motherboard temperature thresholds (&deg;C):
-: <input type="text" name="MB_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['MB_THRESHOLDS']?>">
-
-Fan 3 speeds (%):
-: <input type="text" name="FAN3_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN3_SPEEDS']?>">
-
-Fan 3 follows fan 2 above NVMe temp (&deg;C):
+Fan 3 at least as fast as fan 2 above NVMe temp (&deg;C):
 : <input type="number" name="FAN3_FOLLOW_NVME_ABOVE" min="0" max="100" value="<?=$cfg['FAN3_FOLLOW_NVME_ABOVE']?>" class="narrow">
 
 > Leave empty to disable.
 
-<h3>Safety</h3>
+Motherboard sensor (hwmon name):
+: <input type="text" name="MB_SENSOR" value="<?=$cfg['MB_SENSOR']?>" class="narrow">
 
-Speed when service stops (%):
+<h3>Service</h3>
+
+Fan control service:
+: <select name="SERVICE">
+  <?=mk_option($cfg['SERVICE'], "enable", "Enabled")?>
+  <?=mk_option($cfg['SERVICE'], "disable", "Disabled")?>
+  </select>
+
+Number of fans:
+: <select name="FAN_QUANTITY" onchange="nzShowCards()">
+  <?=mk_option($cfg['FAN_QUANTITY'], "1", "1")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "2", "2")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "3", "3")?>
+  </select>
+
+Check interval (seconds):
+: <input type="number" name="INTERVAL" min="5" max="600" value="<?=$cfg['INTERVAL']?>" class="narrow">
+
+Safe speed (%):
 : <input type="number" name="STOP_SPEED" min="0" max="100" value="<?=$cfg['STOP_SPEED']?>" class="narrow">
+
+> Used when the service stops and for any fan whose temperature sensor can't be read.
+
+Notifications:
+: <select name="NOTIFY">
+  <?=mk_option($cfg['NOTIFY'], "yes", "Yes")?>
+  <?=mk_option($cfg['NOTIFY'], "no", "No")?>
+  </select>
+
+> Unraid notifications when a fan stops, the controller goes missing, or the watchdog restarts the service.
+
+Dashboard tile:
+: <select name="DASHBOARD">
+  <?=mk_option($cfg['DASHBOARD'], "yes", "Show")?>
+  <?=mk_option($cfg['DASHBOARD'], "no", "Hide")?>
+  </select>
 
 &nbsp;
 : <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
 </form>
+</div>
 
 <script>
-function nzxtRefresh() {
-  $.get('/plugins/<?=$plugin?>/include/status.php', function(data) {
-    $('#nzxt-status').html(data.rows);
-    $('#nzxt-state').text(data.state);
+var nzFans = [
+  {n:1, sub:'Fan 1, follows the array hard drives', t:'HDD_THRESHOLDS', s:'FAN1_SPEEDS', name:<?=json_encode($cfg['FAN1_NAME'])?>},
+  {n:2, sub:'Fan 2, follows the NVMe drives', t:'NVME_THRESHOLDS', s:'FAN2_SPEEDS', name:<?=json_encode($cfg['FAN2_NAME'])?>},
+  {n:3, sub:'Fan 3, follows the motherboard', t:'MB_THRESHOLDS', s:'FAN3_SPEEDS', name:<?=json_encode($cfg['FAN3_NAME'])?>}
+];
+var nzLive = {};
+// [temp, speed] points. Quiet through normal temps, full speed by Unraid's default warnings (HDD 51, SSD 60-70).
+var nzPresets = {
+  quiet: {name: 'Cool & quiet', 1: [[35,20],[40,30],[44,45],[48,75],[51,100]], 2: [[40,10],[50,25],[60,60],[70,100]], 3: [[30,20],[38,30],[45,60],[55,100]]}
+};
+
+function nzPreset(key) {
+  var p = nzPresets[key];
+  nzFans.forEach(function(fan) {
+    fan.steps = p[fan.n].map(function(pt){ return {t: pt[0], s: pt[1]}; });
+    nzRenderRows(fan); nzDraw(fan);
+  });
+  $('#nz-preset-note').text(p.name + ' curves filled in. Click Apply to save them.');
+}
+var NS = 'http://www.w3.org/2000/svg';
+var W = 380, H = 190, M = {l:34, r:12, t:12, b:28};
+
+function nzList(v) { return String(v || '').split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return !isNaN(x); }); }
+function nzHidden(name) { return document.querySelector('#nzxt input[type=hidden][name="' + name + '"]'); }
+
+function nzLoad(fan, useDefault) {
+  var t = nzHidden(fan.t), s = nzHidden(fan.s);
+  var ts = nzList(useDefault ? t.dataset.default : t.value), ss = nzList(useDefault ? s.dataset.default : s.value);
+  fan.steps = ts.map(function(temp, i){ return {t: temp, s: ss[i] !== undefined ? ss[i] : ss[ss.length - 1] || 0}; });
+  if (!fan.steps.length) fan.steps = [{t: 30, s: 30}];
+}
+
+// Same rule as the daemon: linear ramp between points, first/last speed outside them.
+function nzSpeedAt(steps, temp) {
+  var p = steps.slice().sort(function(a, b){ return a.t - b.t; });
+  if (temp <= p[0].t) return p[0].s;
+  for (var i = 1; i < p.length; i++)
+    if (temp < p[i].t) return p[i-1].s + Math.trunc((p[i].s - p[i-1].s) * (temp - p[i-1].t) / (p[i].t - p[i-1].t));
+  return p[p.length - 1].s;
+}
+
+function el(tag, attrs, parent) {
+  var e = tag.indexOf('svg:') === 0 ? document.createElementNS(NS, tag.slice(4)) : document.createElement(tag);
+  for (var k in attrs || {}) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function nzBuildCard(fan) {
+  var card = el('div', {'class': 'nz-card', id: 'nz-fan' + fan.n});
+  var head = el('div', {'class': 'nz-head'}, card);
+  var title = el('span', {'class': 'nz-title'}, head);
+  var name = el('input', {type: 'text', name: 'FAN' + fan.n + '_NAME', maxlength: 24, pattern: '[^"|\\\\$`]*', title: 'Fan name', 'aria-label': 'Fan ' + fan.n + ' name'}, title);
+  name.value = fan.name || ('Fan ' + fan.n);
+  el('span', {'class': 'nz-sub'}, title).textContent = fan.sub;
+  var liveBox = el('span', {}, head);
+  fan.liveEl = el('span', {'class': 'nz-live'}, liveBox);
+  fan.noteEl = el('span', {'class': 'nz-note'}, liveBox);
+  var body = el('div', {'class': 'nz-body'}, card);
+  var left = el('div', {}, body);
+  var table = el('table', {'class': 'nz-steps'}, left);
+  el('thead', {}, table).innerHTML = '<tr><th>Temp &deg;C</th><th>Fan %</th><th></th></tr>';
+  fan.tbody = el('tbody', {}, table);
+  var actions = el('div', {'class': 'nz-actions'}, left);
+  var add = el('input', {type: 'button', value: '+ Add point'}, actions);
+  add.onclick = function(){ nzAddStep(fan); };
+  var reset = el('input', {type: 'button', value: 'Reset to default'}, actions);
+  reset.onclick = function(){ nzLoad(fan, true); nzRenderRows(fan); nzDraw(fan); };
+  var ident = el('input', {type: 'button', value: 'Identify', title: 'Run this fan at 100% for 10 seconds so you can see which one it is'}, actions);
+  ident.onclick = function(){ nzIdentify(fan, ident); };
+  fan.errEl = el('div', {'class': 'nz-error'}, left);
+  el('div', {'class': 'nz-hint'}, left).textContent = 'The fan ramps evenly between points, and holds the first and last speed outside them.';
+  var chart = el('div', {'class': 'nz-chart'}, body);
+  fan.svg = el('svg:svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img'}, chart);
+  fan.tip = el('div', {'class': 'nz-tip'}, chart);
+  fan.svg.addEventListener('mousemove', function(e){ nzHover(fan, e); });
+  fan.svg.addEventListener('mouseleave', function(){ fan.tip.style.display = 'none'; if (fan.cross) fan.cross.style.display = 'none'; });
+  return card;
+}
+
+function nzRenderRows(fan) {
+  fan.tbody.innerHTML = '';
+  fan.steps.forEach(function(step, i) {
+    var tr = el('tr', {}, fan.tbody);
+    var t = el('input', {type: 'number', min: 0, max: 100, value: step.t, 'aria-label': 'Temperature'}, el('td', {}, tr));
+    var s = el('input', {type: 'number', min: 0, max: 100, step: 5, value: step.s, 'aria-label': 'Fan speed'}, el('td', {}, tr));
+    var x = el('input', {type: 'button', value: '×', title: 'Remove point', 'class': 'nz-x'}, el('td', {}, tr));
+    x.disabled = fan.steps.length < 2;
+    t.oninput = function(){ step.t = parseInt(t.value, 10); nzDraw(fan); };
+    s.oninput = function(){ step.s = Math.max(0, Math.min(100, parseInt(s.value, 10) || 0)); nzDraw(fan); };
+    x.onclick = function(){ fan.steps.splice(i, 1); nzRenderRows(fan); nzDraw(fan); };
+    step.tEl = t;
+  });
+}
+
+function nzAddStep(fan) {
+  var last = fan.steps.reduce(function(a, b){ return b.t > a.t ? b : a; });
+  fan.steps.push({t: Math.min(100, last.t + 5), s: Math.min(100, last.s + 10)});
+  nzRenderRows(fan); nzDraw(fan);
+}
+
+function nzValidate(fan) {
+  var seen = {}, msg = '';
+  fan.steps.forEach(function(st){ st.tEl && st.tEl.classList.remove('nz-invalid'); });
+  fan.steps.forEach(function(st) {
+    if (isNaN(st.t)) { msg = 'Every point needs a temperature.'; st.tEl && st.tEl.classList.add('nz-invalid'); }
+    else if (seen[st.t]) { msg = 'Two points use ' + st.t + '°C.'; st.tEl && st.tEl.classList.add('nz-invalid'); seen[st.t].tEl && seen[st.t].tEl.classList.add('nz-invalid'); }
+    seen[st.t] = st;
+  });
+  fan.errEl.textContent = msg;
+  return !msg;
+}
+
+function nzDraw(fan) {
+  var svg = fan.svg; svg.innerHTML = '';
+  if (!nzValidate(fan)) return;
+  var steps = fan.steps.slice().sort(function(a, b){ return a.t - b.t; });
+  var live = nzLive[fan.n] && nzLive[fan.n].temp !== null ? nzLive[fan.n] : null;
+  var lo = Math.min(20, steps[0].t - 5), hi = Math.max(60, steps[steps.length - 1].t + 10);
+  if (live) { lo = Math.min(lo, live.temp - 5); hi = Math.max(hi, live.temp + 5); }
+  lo = Math.floor(lo / 10) * 10; hi = Math.ceil(hi / 10) * 10;
+  var x = function(v){ return M.l + (v - lo) / (hi - lo) * (W - M.l - M.r); };
+  var y = function(v){ return H - M.b - v / 100 * (H - M.t - M.b); };
+  fan.scale = {x: x, lo: lo, hi: hi, steps: steps};
+
+  var axis = el('svg:g', {'class': 'nz-axis'}, svg);
+  [0, 25, 50, 75, 100].forEach(function(v) {
+    el('svg:line', {x1: M.l, x2: W - M.r, y1: y(v), y2: y(v), stroke: 'var(--nz-grid)', 'stroke-width': 1}, axis);
+    el('svg:text', {x: M.l - 6, y: y(v) + 4, 'text-anchor': 'end'}, axis).textContent = v + '%';
+  });
+  for (var v = lo; v <= hi; v += 10)
+    el('svg:text', {x: x(v), y: H - M.b + 16, 'text-anchor': 'middle'}, axis).textContent = v + '°';
+
+  var d = 'M' + x(lo) + ',' + y(steps[0].s);
+  steps.forEach(function(st){ d += 'L' + x(st.t) + ',' + y(st.s); });
+  d += 'H' + x(hi);
+  el('svg:path', {d: d, fill: 'none', stroke: 'var(--nz-series)', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
+  steps.forEach(function(st) {
+    el('svg:circle', {cx: x(st.t), cy: y(st.s), r: 4, fill: 'var(--nz-series)', stroke: 'var(--nz-surface,#fff)', 'stroke-width': 2}, svg);
+  });
+
+  fan.cross = el('svg:line', {y1: M.t, y2: H - M.b, stroke: 'var(--nz-muted)', 'stroke-width': 1, style: 'display:none'}, svg);
+
+  if (live) {
+    var lx = x(live.temp), ly = y(live.speed);
+    el('svg:line', {x1: lx, x2: lx, y1: M.t, y2: H - M.b, stroke: 'currentColor', 'stroke-width': 1, opacity: .45}, svg);
+    el('svg:circle', {cx: lx, cy: ly, r: 6, fill: 'currentColor', stroke: 'var(--nz-surface,#fff)', 'stroke-width': 2}, svg);
+    var right = lx > W - 90;
+    el('svg:text', {x: lx + (right ? -10 : 10), y: Math.max(M.t + 10, ly - 10), 'text-anchor': right ? 'end' : 'start', 'font-weight': 'bold'}, svg)
+      .textContent = 'now ' + live.temp + '° → ' + live.speed + '%';
+  }
+  svg.setAttribute('aria-label', fan.title + ' curve: ' + steps.map(function(s){ return s.t + '°C ' + s.s + '%'; }).join(', '));
+}
+
+function nzHover(fan, e) {
+  if (!fan.scale) return;
+  var r = fan.svg.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W;
+  if (px < M.l || px > W - M.r) { fan.tip.style.display = 'none'; fan.cross.style.display = 'none'; return; }
+  var s = fan.scale, temp = Math.round(s.lo + (px - M.l) / (W - M.l - M.r) * (s.hi - s.lo));
+  var sx = s.x(temp);
+  fan.cross.setAttribute('x1', sx); fan.cross.setAttribute('x2', sx); fan.cross.style.display = '';
+  fan.tip.textContent = temp + '°C → ' + nzSpeedAt(s.steps, temp) + '%';
+  fan.tip.style.left = (sx / W * r.width) + 'px';
+  fan.tip.style.top = (M.t / H * r.height + 14) + 'px';
+  fan.tip.style.display = 'block';
+}
+
+function nzShowCards() {
+  var n = parseInt(document.querySelector('#nzxt select[name=FAN_QUANTITY]').value, 10);
+  nzFans.forEach(function(fan){ fan.card.style.display = fan.n <= n ? '' : 'none'; });
+}
+
+function nzSubmit(form) {
+  var ok = true;
+  nzFans.forEach(function(fan) {
+    if (!nzValidate(fan)) { ok = false; return; }
+    var steps = fan.steps.slice().sort(function(a, b){ return a.t - b.t; });
+    nzHidden(fan.t).value = steps.map(function(s){ return s.t; }).join(',');
+    nzHidden(fan.s).value = steps.map(function(s){ return s.s; }).join(',');
+    fan.steps = steps; nzRenderRows(fan); nzDraw(fan);
+  });
+  return ok;
+}
+
+function nzIdentify(fan, btn) {
+  btn.disabled = true; btn.value = 'Spinning...';
+  $.post('/plugins/nzxt-fancontrol/include/action.php', {action: 'identify', fan: fan.n, csrf_token: csrf_token}, function(r) {
+    if (!r.ok) $(fan.noteEl).text(r.msg).addClass('nz-warn');
+    setTimeout(nzRefresh, 500);
+  }, 'json').always(function() {
+    setTimeout(function(){ btn.disabled = false; btn.value = 'Identify'; nzRefresh(); }, 10500);
+  });
+}
+
+function nzRefresh() {
+  $.get('/plugins/nzxt-fancontrol/include/status.php', function(data) {
+    $('#nz-state').text(data.controller === 'missing' ? 'NZXT controller not found. Check its USB cable; control resumes when it is back.' : data.state)
+      .toggleClass('nz-warn', data.controller === 'missing');
+    nzLive = {};
+    (data.fans || []).forEach(function(f) { nzLive[f.fan] = f; });
+    nzFans.forEach(function(fan) {
+      var f = nzLive[fan.n];
+      fan.liveEl.innerHTML = f ? f.source + ' <b>' + (f.temp === null ? '?' : f.temp + '&deg;C') + '</b> &middot; <b>' + f.speed + '%</b> &middot; ' + f.rpm + ' RPM &middot; ' + f.mode : 'no data';
+      var note = f ? f.note : '';
+      if (f && f.mode === 'DC' && !note) note = 'DC (3-pin) fan: the controller varies voltage, so its speed range may be narrow';
+      $(fan.noteEl).text(note).toggleClass('nz-warn', !!(f && /stopped|safe speed/.test(f.note)));
+      nzDraw(fan);
+    });
+  }, 'json');
+}
+
+// Pick dark-mode steps from the actual Unraid theme background.
+function nzTheme() {
+  var bg = [255, 255, 255];
+  for (var node = document.getElementById('nzxt'); node; node = node.parentElement) {
+    var c = getComputedStyle(node).backgroundColor.match(/[\d.]+/g);
+    if (c && (c.length < 4 || +c[3] > 0)) { bg = c; break; }
+  }
+  var lum = (0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]) / 255;
+  var root = document.getElementById('nzxt');
+  root.classList.toggle('nz-dark', lum < 0.5);
+  root.style.setProperty('--nz-surface', 'rgb(' + bg.slice(0, 3).join(',') + ')');
+}
+
+$(function() {
+  nzTheme();
+  var cards = document.getElementById('nz-cards');
+  nzFans.forEach(function(fan) {
+    nzLoad(fan);
+    fan.card = nzBuildCard(fan);
+    cards.appendChild(fan.card);
+    nzRenderRows(fan);
+    nzDraw(fan);
+  });
+  nzShowCards();
+  nzRefresh();
+  setInterval(nzRefresh, 5000);
+});
+</script>
+]]></INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/NZXTFanDash.page">
+<INLINE><![CDATA[Menu="Dashboard:0"
+Cond="(@parse_ini_file('/boot/config/plugins/nzxt-fancontrol/nzxt-fancontrol.cfg')['DASHBOARD'] ?? 'yes') != 'no'"
+---
+<?PHP
+$pluginname = "nzxt-fancontrol";
+
+$mytiles[$pluginname]['column2'] =
+<<<EOT
+<tbody id="nzdash" title="_(NZXT Fan Control)_">
+<tr>
+  <td>
+    <span class='tile-header'>
+      <span class='tile-header-left'>
+        <i class='fa fa-snowflake-o f32'></i>
+        <div class='section'>
+          <h3 class='tile-header-main'>_(Fans)_</h3>
+          <span id='nzdash-state'>_(Loading)_...</span><br>
+        </div>
+      </span>
+      <span class='tile-header-right'>
+        <span class='tile-header-right-controls'>
+          <a href="/Settings/NZXTFanControl" title="_(Fan control settings)_"><i class="fa fa-fw fa-cog control"></i></a>
+        </span>
+      </span>
+    </span>
+  </td>
+</tr>
+<tr><td id="nzdash-fans"></td></tr>
+</tbody>
+EOT;
+?>
+<style>
+#nzdash-fans .nzd-row{display:grid;grid-template-columns:minmax(0,1fr) 3.5em 7em 5em;align-items:center;gap:8px;padding:3px 0;font-variant-numeric:tabular-nums}
+#nzdash-fans .nzd-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#nzdash-fans .nzd-bar{position:relative;height:14px;border-radius:3px;background:rgba(128,128,128,.2);overflow:hidden}
+#nzdash-fans .nzd-bar span{position:absolute;inset:0 auto 0 0;background:#3987e5;border-radius:3px}
+#nzdash-fans .nzd-bar b{position:relative;display:block;text-align:center;font-size:11px;line-height:14px;font-weight:normal}
+#nzdash-fans .nzd-rpm,#nzdash-fans .nzd-temp{text-align:right}
+#nzdash-fans .nzd-note{grid-column:1/-1;opacity:.75;font-size:.9em;margin-top:-2px}
+</style>
+<script>
+function nzDashRefresh() {
+  $.get('/plugins/nzxt-fancontrol/include/status.php', function(d) {
+    var box = $('#nzdash-fans');
+    if (!box.length) return;
+    $('#nzdash-state').text(d.controller === 'missing' ? 'Controller missing' : (d.fans.length ? 'Running' : 'Stopped'));
+    box.html(d.fans.map(function(f) {
+      return '<div class="nzd-row"><span class="nzd-name" title="' + f.source + '">' + f.name + '</span>' +
+        '<span class="nzd-temp">' + (f.temp === null ? '-' : f.temp + '&deg;C') + '</span>' +
+        '<span class="nzd-bar"><span style="width:' + f.speed + '%"></span><b>' + f.speed + '%</b></span>' +
+        '<span class="nzd-rpm">' + f.rpm + ' rpm</span>' +
+        (f.note ? '<span class="nzd-note">' + f.note + '</span>' : '') + '</div>';
+    }).join('') || '<span class="nzd-note">No data</span>');
   }, 'json');
 }
 $(function() {
-  nzxtRefresh();
-  setInterval(nzxtRefresh, 5000);
+  nzDashRefresh();
+  setInterval(nzDashRefresh, 10000);
 });
 </script>
 ]]></INLINE>
@@ -167,17 +506,37 @@ $plugin = "nzxt-fancontrol";
 $status = @parse_ini_file("/var/run/$plugin.status") ?: [];
 $state = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
 
-$rows = "";
+$fans = [];
 for ($fan = 1; $fan <= 3; $fan++) {
   if (!isset($status["fan$fan"])) continue;
-  [$source, $temp, $speed, $rpm] = explode("|", $status["fan$fan"]);
-  $rows .= "<tr><td>$fan</td><td>".htmlspecialchars($source)."</td><td>".(int)$temp."</td><td>".(int)$speed."</td><td>".(int)$rpm."</td></tr>";
+  [$name, $source, $temp, $speed, $rpm, $mode, $note] = array_pad(explode("|", $status["fan$fan"]), 7, "");
+  $fans[] = [
+    'fan' => $fan, 'name' => htmlspecialchars($name), 'source' => htmlspecialchars($source),
+    'temp' => is_numeric($temp) ? (int)$temp : null, 'speed' => (int)$speed, 'rpm' => (int)$rpm,
+    'mode' => htmlspecialchars($mode), 'note' => htmlspecialchars($note),
+  ];
 }
-if ($rows === "") $rows = "<tr><td colspan='5'>No data (service stopped?)</td></tr>";
 if (isset($status['updated'])) $state .= " - updated ".$status['updated'];
 
 header('Content-Type: application/json');
-echo json_encode(['state' => $state, 'rows' => $rows]);
+echo json_encode(['state' => $state, 'controller' => $status['controller'] ?? '', 'fans' => $fans]);
+?>
+]]></INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/include/action.php">
+<INLINE><![CDATA[<?PHP
+// POST only; Unraid's request prepend checks csrf_token.
+$plugin = "nzxt-fancontrol";
+$fan = (int)($_POST['fan'] ?? 0);
+header('Content-Type: application/json');
+if (($_POST['action'] ?? '') !== 'identify' || $fan < 1 || $fan > 3) {
+  http_response_code(400);
+  echo json_encode(['ok' => false, 'msg' => 'bad request']);
+  return;
+}
+exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin identify $fan 2>&1", $out, $rc);
+echo json_encode(['ok' => $rc === 0, 'msg' => implode(' ', $out)]);
 ?>
 ]]></INLINE>
 </FILE>
@@ -193,170 +552,280 @@ DEFAULT_CFG=/usr/local/emhttp/plugins/$PLUGIN/default.cfg
 USER_CFG=/boot/config/plugins/$PLUGIN/$PLUGIN.cfg
 DISKS_INI=/var/local/emhttp/disks.ini
 STATUS=/var/run/$PLUGIN.status
+IDENTIFY=/var/run/$PLUGIN.identify
+NOTIFY_CMD=/usr/local/emhttp/webGui/scripts/notify
+LOG_STEP=5      # only log speed changes of at least this many %
+STALL_TICKS=2   # consecutive 0 RPM readings before a fan counts as stopped
 
 log() { logger -t "$PLUGIN" -- "$*"; }
+
+notify() { # <normal|warning|alert> <subject> <description>
+  log "$2: $3"
+  [[ $NOTIFY == yes && -x $NOTIFY_CMD ]] && "$NOTIFY_CMD" -e "NZXT Fan Control" -i "$1" -s "$2" -d "$3" >/dev/null 2>&1
+}
+
+int_or() { [[ $1 =~ ^[0-9]+$ ]] && echo "$1" || echo "$2"; }
+pct_or() { local v; v=$(int_or "$1" "$2"); echo $(( v > 100 ? 100 : v )); }
+default_of() { ( source "$DEFAULT_CFG"; echo "${!1}" ); }
+
+# Fills <NAME>_T / <NAME>_S with sorted, de-duplicated points, speeds clamped to 100.
+parse_curve() { # <NAME> <temps> <speeds>
+  local -n out_t=${1}_T out_s=${1}_S
+  local t s
+  out_t=() out_s=()
+  while read -r t s; do
+    [[ -n $t ]] && out_t+=("$t") out_s+=("$s")
+  done < <(paste -d' ' <(tr ',' '\n' <<< "${2// /}") <(tr ',' '\n' <<< "${3// /}") |
+    awk 'NF == 2 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && !seen[$1]++ { print $1, ($2 > 100 ? 100 : $2) }' | sort -n)
+  (( ${#out_t[@]} > 0 ))
+}
+
+load_curve() { # <NAME> <temps key> <speeds key>
+  parse_curve "$1" "${!2}" "${!3}" && return
+  log "warning: $2/$3 has no valid points, using the default curve"
+  parse_curve "$1" "$(default_of "$2")" "$(default_of "$3")"
+}
 
 load_config() {
   source "$DEFAULT_CFG"
   [[ -f $USER_CFG ]] && source "$USER_CFG"
-  read -ra HDD_T <<< "${HDD_THRESHOLDS//,/ }"
-  read -ra FAN1_S <<< "${FAN1_SPEEDS//,/ }"
-  read -ra NVME_T <<< "${NVME_THRESHOLDS//,/ }"
-  read -ra FAN2_S <<< "${FAN2_SPEEDS//,/ }"
-  read -ra MB_T <<< "${MB_THRESHOLDS//,/ }"
-  read -ra FAN3_S <<< "${FAN3_SPEEDS//,/ }"
-  (( ${#HDD_T[@]} == ${#FAN1_S[@]} )) || log "warning: HDD thresholds and fan 1 speeds differ in length"
-  (( ${#NVME_T[@]} == ${#FAN2_S[@]} )) || log "warning: NVMe thresholds and fan 2 speeds differ in length"
-  (( ${#MB_T[@]} == ${#FAN3_S[@]} )) || log "warning: MB thresholds and fan 3 speeds differ in length"
+  INTERVAL=$(int_or "$INTERVAL" 60); (( INTERVAL < 5 )) && INTERVAL=5
+  FAN_QUANTITY=$(int_or "$FAN_QUANTITY" 3); (( FAN_QUANTITY < 1 || FAN_QUANTITY > 3 )) && FAN_QUANTITY=3
+  STOP_SPEED=$(pct_or "$STOP_SPEED" 60)
+  HDD_IDLE_SPEED=$(pct_or "$HDD_IDLE_SPEED" 0)
+  [[ $FAN3_FOLLOW_NVME_ABOVE =~ ^[0-9]+$ ]] || FAN3_FOLLOW_NVME_ABOVE=""
+  [[ $HDD_TEMP_MODE == avg ]] || HDD_TEMP_MODE=max
+  load_curve HDD HDD_THRESHOLDS FAN1_SPEEDS
+  load_curve NVME NVME_THRESHOLDS FAN2_SPEEDS
+  load_curve MB MB_THRESHOLDS FAN3_SPEEDS
+  NAMES=("" "${FAN1_NAME:-Fan 1}" "${FAN2_NAME:-Fan 2}" "${FAN3_NAME:-Fan 3}")
+  NAMES=("${NAMES[@]//[\"|]/}")
 }
 
 hwmon_by_name() {
   local hw
   for hw in /sys/class/hwmon/hwmon*; do
     [[ $(< "$hw/name") == "$1" ]] && echo "$hw"
-  done
+  done 2>/dev/null
 }
 
-# Speed for the highest threshold reached; below the first threshold uses the first speed.
+# Linear ramp between curve points; holds the first/last speed outside them.
 curve() {
-  local temp=$1 i
+  local temp=$1 i n
   local -n t=$2 s=$3
-  local speed=${s[0]}
-  for i in "${!t[@]}"; do
-    if (( temp >= t[i] )); then speed=${s[i]:-${s[-1]}}; else break; fi
+  n=${#t[@]}
+  (( temp <= t[0] )) && { echo "${s[0]}"; return; }
+  for (( i = 1; i < n; i++ )); do
+    if (( temp < t[i] )); then
+      echo $(( s[i-1] + (s[i] - s[i-1]) * (temp - t[i-1]) / (t[i] - t[i-1]) ))
+      return
+    fi
   done
-  echo "$speed"
+  echo "${s[n-1]}"
 }
 
-# Average temp of spinning sd* disks from Unraid's own state (never wakes a drive).
-# Prints "<avg> <online> <standby>".
+# HDD temp from Unraid's own disk state (never wakes a drive), "-" when none is readable.
+# Prints "<temp> <online> <standby>".
 read_hdd() {
   local excluded=",${EXCLUDED_DRIVES// /},"
-  awk -F'"' -v ex="$excluded" '
-    /^\[/ { flush(); name=dev=type=temp=down="" ; next }
-    /^name=/     { name=$2 }
-    /^device=/   { dev=$2 }
-    /^type=/     { type=$2 }
-    /^temp=/     { temp=$2 }
-    /^spundown=/ { down=$2 }
+  awk -F'"' -v ex="$excluded" -v mode="$HDD_TEMP_MODE" '
+    /^\[/ { flush(); name = dev = type = temp = down = ""; next }
+    /^name=/     { name = $2 }
+    /^device=/   { dev = $2 }
+    /^type=/     { type = $2 }
+    /^temp=/     { temp = $2 }
+    /^spundown=/ { down = $2 }
     function flush() {
       if (dev !~ /^sd/ || type == "Flash") return
       if (index(ex, "," dev ",") || index(ex, "," name ",")) return
       if (down == "1") { standby++; return }
-      if (temp ~ /^[0-9]+$/) { sum += temp; online++ }
+      if (temp ~ /^[0-9]+$/) { sum += temp; online++; if (temp + 0 > max) max = temp + 0 }
     }
-    END { flush(); printf "%d %d %d\n", (online ? sum / online : 0), online, standby }
-  ' "$DISKS_INI" 2>/dev/null || echo "0 0 0"
+    END {
+      flush()
+      t = online ? (mode == "avg" ? int(sum / online) : max) : "-"
+      printf "%s %d %d\n", t, online, standby
+    }
+  ' "$DISKS_INI" 2>/dev/null || echo "- 0 0"
 }
 
-# Average temp across every nvme hwmon sensor. Prints "<avg> <count>".
+# Hottest NVMe drive (or average with HDD_TEMP_MODE=avg). Prints "<temp> <count>".
 read_nvme() {
-  local hw sum=0 n=0
+  local hw v sum=0 max=0 n=0
   for hw in $(hwmon_by_name nvme); do
-    [[ -r $hw/temp1_input ]] || continue
-    (( sum += $(< "$hw/temp1_input") / 1000, n++ ))
+    v=$(cat "$hw/temp1_input" 2>/dev/null)
+    [[ $v =~ ^[0-9]+$ ]] || continue
+    (( v /= 1000, sum += v, n++ ))
+    (( v > max )) && max=$v
   done
-  echo "$(( n ? sum / n : 0 )) $n"
+  if (( n == 0 )); then echo "- 0"
+  elif [[ $HDD_TEMP_MODE == avg ]]; then echo "$(( sum / n )) $n"
+  else echo "$max $n"
+  fi
 }
 
 read_mb() {
-  local hw
+  local hw v
   hw=$(hwmon_by_name "$MB_SENSOR" | head -n1)
-  [[ -r $hw/temp1_input ]] && echo $(( $(< "$hw/temp1_input") / 1000 )) || echo 0
+  v=$(cat "$hw/temp1_input" 2>/dev/null)
+  [[ $v =~ ^-?[0-9]+$ ]] && echo $(( v / 1000 )) || echo "-"
 }
 
 set_fan() {
   local fan=$1 pct=$2
   local pwm=$(( (pct * 255 + 50) / 100 ))
-  [[ $(< "$NZXT/pwm${fan}_enable") == 1 ]] || echo 1 > "$NZXT/pwm${fan}_enable"
-  [[ $(< "$NZXT/pwm$fan") == "$pwm" ]] || echo "$pwm" > "$NZXT/pwm$fan"
-}
-
-set_all() {
-  local fan
-  for (( fan = 1; fan <= FAN_QUANTITY; fan++ )); do set_fan "$fan" "$1"; done
+  { [[ $(< "$NZXT/pwm${fan}_enable") == 1 ]] || echo 1 > "$NZXT/pwm${fan}_enable"
+    echo "$pwm" > "$NZXT/pwm$fan"   # always write: read-back can be stale right after a reconnect
+  } 2>/dev/null || { NZXT=""; return 1; }
 }
 
 find_controller() {
   NZXT=$(hwmon_by_name nzxtsmart2 | head -n1)
   if [[ -z $NZXT ]]; then
     modprobe nzxt-smart2 2>/dev/null
-    sleep 2
     NZXT=$(hwmon_by_name nzxtsmart2 | head -n1)
   fi
   [[ -n $NZXT ]]
 }
 
-declare -A LAST
+# Re-finds the controller when it vanished (a USB reset renumbers hwmon); notifies once per outage.
+check_controller() {
+  [[ -n $NZXT && $(cat "$NZXT/name" 2>/dev/null) == nzxtsmart2 ]] && return 0
+  if find_controller; then
+    [[ -n $CONTROLLER_LOST ]] && notify normal "Controller back" "NZXT controller found again at $NZXT; fan control resumed."
+    CONTROLLER_LOST=""
+    return 0
+  fi
+  [[ -z $CONTROLLER_LOST ]] && notify alert "Controller missing" "NZXT controller (nzxtsmart2) not found. Fans run at the controller's own speed until it is back."
+  CONTROLLER_LOST=1
+  printf 'updated="%s"\ncontroller="missing"\n' "$(date '+%F %T')" > "$STATUS"
+  return 1
+}
+
+# Prints "<fan> <seconds left>" while an identify request is active.
+identify_active() {
+  local fan until now
+  [[ -f $IDENTIFY ]] || return 1
+  read -r fan until < "$IDENTIFY"
+  now=$(date +%s)
+  if [[ $fan =~ ^[1-3]$ && $until =~ ^[0-9]+$ ]] && (( until > now )); then echo "$fan $(( until - now ))"; return 0; fi
+  rm -f "$IDENTIFY"
+  return 1
+}
+
+declare -A LOGGED STALL
 
 tick() {
-  local fan1 fan2 fan3 fan speed rpm
-  read -r HDD_TEMP HDD_ON HDD_SB <<< "$(read_hdd)"
-  read -r NVME_TEMP NVME_N <<< "$(read_nvme)"
-  MB_TEMP=$(read_mb)
+  check_controller || return
+  local hdd_temp hdd_on hdd_sb nvme_temp nvme_n mb_temp id_fan id_left fan speed rpm mode note last
+  local -a speeds temps sources notes
+  read -r hdd_temp hdd_on hdd_sb <<< "$(read_hdd)"
+  read -r nvme_temp nvme_n <<< "$(read_nvme)"
+  mb_temp=$(read_mb)
 
-  if (( HDD_ON == 0 && HDD_SB > 0 )); then
-    fan1=$HDD_IDLE_SPEED
+  if [[ $hdd_temp != - ]]; then
+    speeds[1]=$(curve "$hdd_temp" HDD_T HDD_S)
+  elif (( hdd_sb > 0 )); then
+    speeds[1]=$HDD_IDLE_SPEED notes[1]="all drives spun down"
   else
-    fan1=$(curve "$HDD_TEMP" HDD_T FAN1_S)
+    speeds[1]=$STOP_SPEED notes[1]="no drive temperature, safe speed"
   fi
-  fan2=$(curve "$NVME_TEMP" NVME_T FAN2_S)
-  fan3=$(curve "$MB_TEMP" MB_T FAN3_S)
-  [[ -n $FAN3_FOLLOW_NVME_ABOVE ]] && (( NVME_TEMP > FAN3_FOLLOW_NVME_ABOVE )) && fan3=$fan2
+  if [[ $nvme_temp != - ]]; then
+    speeds[2]=$(curve "$nvme_temp" NVME_T NVME_S)
+  else
+    speeds[2]=$STOP_SPEED notes[2]="no NVMe temperature, safe speed"
+  fi
+  if [[ $mb_temp != - ]]; then
+    speeds[3]=$(curve "$mb_temp" MB_T MB_S)
+  else
+    speeds[3]=$STOP_SPEED notes[3]="no $MB_SENSOR temperature, safe speed"
+  fi
+  # Fan 3 never runs slower than fan 2 once the NVMe drives are warm.
+  if [[ -n $FAN3_FOLLOW_NVME_ABOVE && $nvme_temp != - ]] && (( nvme_temp > FAN3_FOLLOW_NVME_ABOVE && speeds[2] > speeds[3] )); then
+    speeds[3]=${speeds[2]} notes[3]="following NVMe fan"
+  fi
+  read -r id_fan id_left <<< "$(identify_active)"
+  [[ -n $id_fan ]] && speeds[id_fan]=100 notes[id_fan]="identify (${id_left}s)"
 
-  local -a speeds=("" "$fan1" "$fan2" "$fan3")
-  local -a temps=("" "$HDD_TEMP" "$NVME_TEMP" "$MB_TEMP")
-  local -a sources=("" "HDD ($HDD_ON up, $HDD_SB down)" "NVMe ($NVME_N)" "MB ($MB_SENSOR)")
+  temps=("" "$hdd_temp" "$nvme_temp" "$mb_temp")
+  sources=("" "HDD $HDD_TEMP_MODE ($hdd_on up, $hdd_sb down)" "NVMe $HDD_TEMP_MODE ($nvme_n)" "MB ($MB_SENSOR)")
   {
     echo "updated=\"$(date '+%F %T')\""
+    echo "controller=\"ok\""
     for (( fan = 1; fan <= FAN_QUANTITY; fan++ )); do
-      speed=${speeds[fan]}
-      set_fan "$fan" "$speed"
-      rpm=$(< "$NZXT/fan${fan}_input")
-      if [[ ${LAST[$fan]} != "$speed" ]]; then
-        log "fan$fan -> $speed% (${sources[fan]} ${temps[fan]}C)"
-        LAST[$fan]=$speed
+      speed=${speeds[fan]} note=${notes[fan]}
+      set_fan "$fan" "$speed" || { log "error: writing fan$fan failed, looking for the controller again"; return; }
+      rpm=$(int_or "$(cat "$NZXT/fan${fan}_input" 2>/dev/null)" 0)
+      [[ $(cat "$NZXT/pwm${fan}_mode" 2>/dev/null) == 1 ]] && mode=PWM || mode=DC
+
+      if (( speed > 0 && rpm == 0 )); then
+        (( ++STALL[$fan] == STALL_TICKS )) && notify warning "${NAMES[fan]} stopped" "Fan $fan is set to $speed% but reports 0 RPM. Check the fan and its cable."
+        (( STALL[$fan] >= STALL_TICKS )) && note="stopped: 0 RPM"
+      else
+        (( ${STALL[$fan]:-0} >= STALL_TICKS )) && notify normal "${NAMES[fan]} spinning again" "Fan $fan reports $rpm RPM."
+        STALL[$fan]=0
       fi
-      (( speed > 0 && rpm == 0 )) && log "warning: fan$fan set to $speed% but reports 0 RPM"
-      echo "fan${fan}=\"${sources[fan]}|${temps[fan]}|$speed|$rpm\""
+
+      last=${LOGGED[$fan]}
+      if [[ -z $last ]] || (( speed - last >= LOG_STEP || last - speed >= LOG_STEP || (speed == 0) != (last == 0) )); then
+        log "fan$fan (${NAMES[fan]}) -> $speed% (${sources[fan]} ${temps[fan]}C${note:+, $note})"
+        LOGGED[$fan]=$speed
+      fi
+      echo "fan${fan}=\"${NAMES[fan]}|${sources[fan]}|${temps[fan]}|$speed|$rpm|$mode|$note\""
     done
   } > "$STATUS.tmp" && mv "$STATUS.tmp" "$STATUS"
 }
 
+SLEEPER=""
 shutdown() {
-  log "stopping, setting fans to ${STOP_SPEED}%"
-  set_all "$STOP_SPEED"
-  rm -f "$STATUS"
+  [[ -n $SLEEPER ]] && kill "$SLEEPER" 2>/dev/null
+  if check_controller; then
+    log "stopping, setting fans to ${STOP_SPEED}%"
+    for (( fan = 1; fan <= FAN_QUANTITY; fan++ )); do set_fan "$fan" "$STOP_SPEED"; done
+  fi
+  rm -f "$STATUS" "$IDENTIFY"
   exit 0
 }
 
 load_config
-if ! find_controller; then
-  log "error: NZXT controller (nzxtsmart2 hwmon) not found"
-  exit 1
-fi
-log "started (controller $NZXT, interval ${INTERVAL}s)"
+find_controller
+log "started (controller ${NZXT:-not found yet}, interval ${INTERVAL}s, drive temp: $HDD_TEMP_MODE)"
 trap shutdown TERM INT
 trap 'load_config; log "config reloaded"' HUP
+trap ':' USR1   # wake up now, e.g. for an identify request
 
 while true; do
   tick
-  sleep "$INTERVAL" &
-  wait $!
+  wait_for=$INTERVAL
+  read -r _ id_left <<< "$(identify_active)"
+  [[ -n $id_left ]] && (( id_left < wait_for )) && wait_for=$id_left
+  sleep "$wait_for" &
+  SLEEPER=$!
+  wait "$SLEEPER"
+  kill "$SLEEPER" 2>/dev/null
+  SLEEPER=""
 done
 ]]></INLINE>
 </FILE>
 
 <FILE Name="&emhttp;/scripts/rc.&name;" Mode="0755">
 <INLINE><![CDATA[#!/bin/bash
-# start|stop|restart|reload|status for the NZXT fan control daemon.
+# start|stop|restart|apply|reload|identify|watchdog|status for the NZXT fan control daemon.
 
 PLUGIN=nzxt-fancontrol
 DAEMON=/usr/local/emhttp/plugins/$PLUGIN/scripts/fancontrol.sh
 PIDFILE=/var/run/$PLUGIN.pid
+IDENTIFY=/var/run/$PLUGIN.identify
 CFG=/boot/config/plugins/$PLUGIN/$PLUGIN.cfg
+IDENTIFY_SECONDS=10
 
 running() { [[ -f $PIDFILE ]] && kill -0 "$(< "$PIDFILE")" 2>/dev/null; }
+
+enabled() {
+  local SERVICE=enable
+  [[ -f $CFG ]] && source "$CFG"
+  [[ $SERVICE == enable ]]
+}
 
 start() {
   running && { echo "$PLUGIN already running"; return 0; }
@@ -375,30 +844,129 @@ stop() {
   echo "$PLUGIN stopped"
 }
 
-# Called by the settings page after saving: honour the enable/disable switch.
+# Called by the settings page after saving. Reloads in place so the fans don't blip to the safe speed.
 apply() {
-  local SERVICE=enable
+  if ! enabled; then stop
+  elif running; then kill -HUP "$(< "$PIDFILE")"; echo "$PLUGIN settings reloaded"
+  else start
+  fi
+}
+
+identify() {
+  [[ $1 =~ ^[1-3]$ ]] || { echo "usage: $0 identify 1|2|3"; return 1; }
+  running || { echo "$PLUGIN is not running"; return 1; }
+  echo "$1 $(( $(date +%s) + IDENTIFY_SECONDS ))" > "$IDENTIFY"
+  kill -USR1 "$(< "$PIDFILE")"
+  echo "fan $1 at 100% for ${IDENTIFY_SECONDS}s"
+}
+
+# Run from cron: restarts the daemon if it died while the service is enabled.
+watchdog() {
+  enabled && ! running || return 0
+  local NOTIFY=yes
   [[ -f $CFG ]] && source "$CFG"
-  stop
-  [[ $SERVICE == enable ]] && start
+  logger -t "$PLUGIN" "watchdog: daemon was not running, restarting"
+  [[ $NOTIFY == yes ]] && /usr/local/emhttp/webGui/scripts/notify -e "NZXT Fan Control" -i warning -s "Fan control restarted" \
+    -d "The fan control daemon had stopped and was restarted by the watchdog." >/dev/null 2>&1
+  start
 }
 
 case $1 in
-  start)   start ;;
-  stop)    stop ;;
-  restart) stop; start ;;
-  apply)   apply ;;
-  reload)  running && kill -HUP "$(< "$PIDFILE")" ;;
-  status)  running && echo "$PLUGIN running (pid $(< "$PIDFILE"))" || { echo "$PLUGIN stopped"; exit 1; } ;;
-  *)       echo "usage: $0 start|stop|restart|apply|reload|status"; exit 1 ;;
+  start)    start ;;
+  stop)     stop ;;
+  restart)  stop; start ;;
+  apply)    apply ;;
+  reload)   running && kill -HUP "$(< "$PIDFILE")" ;;
+  identify) identify "$2" ;;
+  watchdog) watchdog ;;
+  status)   running && echo "$PLUGIN running (pid $(< "$PIDFILE"))" || { echo "$PLUGIN stopped"; exit 1; } ;;
+  *)        echo "usage: $0 start|stop|restart|apply|reload|identify <fan>|watchdog|status"; exit 1 ;;
 esac
 ]]></INLINE>
 </FILE>
 
-<!-- Post-install: start the daemon unless disabled in settings. -->
+<FILE Name="&emhttp;/images/&name;.png.b64">
+<INLINE>
+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
+rkJggg==
+</INLINE>
+</FILE>
+
+<!-- Watchdog: restart the daemon if it dies. Unraid merges plugin .cron files into root's crontab. -->
+<FILE Name="&flash;/&name;.cron">
+<INLINE>
+# NZXT fan control watchdog
+*/5 * * * * &emhttp;/scripts/rc.&name; watchdog &gt;/dev/null 2&gt;&amp;1
+</INLINE>
+</FILE>
+
+<!-- Post-install: decode the icon, register the watchdog, start the daemon unless disabled. -->
 <FILE Run="/bin/bash">
 <INLINE>
-mkdir -p &flash;
+base64 -d &emhttp;/images/&name;.png.b64 &gt; &emhttp;/images/&name;.png &amp;&amp; rm -f &emhttp;/images/&name;.png.b64
+chmod 755 &emhttp; &emhttp;/images &emhttp;/include &emhttp;/scripts
+/usr/local/sbin/update_cron
 SERVICE=enable
 [ -f &flash;/&name;.cfg ] &amp;&amp; source &flash;/&name;.cfg
 if [ "$SERVICE" = "enable" ]; then
@@ -417,8 +985,10 @@ echo "-----------------------------------------------------------"
 <FILE Run="/bin/bash" Method="remove">
 <INLINE>
 [ -x &emhttp;/scripts/rc.&name; ] &amp;&amp; &emhttp;/scripts/rc.&name; stop
+rm -f &flash;/&name;.cron
+/usr/local/sbin/update_cron
 rm -rf &emhttp;
-rm -f /var/run/&name;.status
+rm -f /var/run/&name;.status /var/run/&name;.identify
 echo "&name; removed (settings kept in &flash;)"
 </INLINE>
 </FILE>

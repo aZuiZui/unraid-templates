@@ -3,15 +3,18 @@ $plugin = "nzxt-fancontrol";
 $status = @parse_ini_file("/var/run/$plugin.status") ?: [];
 $state = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
 
-$rows = "";
+$fans = [];
 for ($fan = 1; $fan <= 3; $fan++) {
   if (!isset($status["fan$fan"])) continue;
-  [$source, $temp, $speed, $rpm] = explode("|", $status["fan$fan"]);
-  $rows .= "<tr><td>$fan</td><td>".htmlspecialchars($source)."</td><td>".(int)$temp."</td><td>".(int)$speed."</td><td>".(int)$rpm."</td></tr>";
+  [$name, $source, $temp, $speed, $rpm, $mode, $note] = array_pad(explode("|", $status["fan$fan"]), 7, "");
+  $fans[] = [
+    'fan' => $fan, 'name' => htmlspecialchars($name), 'source' => htmlspecialchars($source),
+    'temp' => is_numeric($temp) ? (int)$temp : null, 'speed' => (int)$speed, 'rpm' => (int)$rpm,
+    'mode' => htmlspecialchars($mode), 'note' => htmlspecialchars($note),
+  ];
 }
-if ($rows === "") $rows = "<tr><td colspan='5'>No data (service stopped?)</td></tr>";
 if (isset($status['updated'])) $state .= " - updated ".$status['updated'];
 
 header('Content-Type: application/json');
-echo json_encode(['state' => $state, 'rows' => $rows]);
+echo json_encode(['state' => $state, 'controller' => $status['controller'] ?? '', 'fans' => $fans]);
 ?>

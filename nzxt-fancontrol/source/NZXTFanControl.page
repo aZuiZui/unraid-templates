@@ -6,54 +6,71 @@ Tag="snowflake-o"
 <?PHP
 $plugin = "nzxt-fancontrol";
 $cfg = parse_plugin_cfg($plugin);
+$defaults = parse_ini_file("/usr/local/emhttp/plugins/$plugin/default.cfg");
 $running = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
-$list = '^\s*\d+(\s*,\s*\d+)*\s*$';
 ?>
 <style>
-table.nzxt{width:auto;margin:0 0 20px 0}
-table.nzxt td,table.nzxt th{padding:4px 16px 4px 0;text-align:left}
+#nzxt{--nz-series:#2a78d6;--nz-grid:rgba(128,128,128,.22);--nz-muted:rgba(128,128,128,.95);--nz-border:rgba(128,128,128,.3);--nz-bad:#d03b3b}
+#nzxt.nz-dark{--nz-series:#3987e5;--nz-bad:#e66767}
+#nzxt .nz-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,560px),1fr));gap:16px;margin:12px 0 20px}
+#nzxt .nz-card{border:1px solid var(--nz-border);border-radius:6px;padding:12px 14px}
+#nzxt .nz-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px}
+#nzxt .nz-title{font-weight:bold;font-size:1.15em}
+#nzxt .nz-live{color:var(--nz-muted);font-variant-numeric:tabular-nums}
+#nzxt .nz-live b{color:inherit}
+#nzxt .nz-body{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-start}
+#nzxt table.nz-steps{width:auto;margin:0;border-collapse:collapse}
+#nzxt table.nz-steps th{font-weight:normal;color:var(--nz-muted);text-align:left;padding:0 6px 4px 0;white-space:nowrap}
+#nzxt table.nz-steps td{padding:2px 6px 2px 0;white-space:nowrap;border:0}
+#nzxt table.nz-steps input[type=number]{width:62px!important;min-width:0!important;margin:0!important;padding:3px 4px!important;text-align:right}
+#nzxt table.nz-steps input.nz-invalid{outline:2px solid var(--nz-bad)}
+#nzxt .nz-x{min-width:0!important;margin:0!important;padding:2px 8px!important}
+#nzxt .nz-actions{margin-top:6px}
+#nzxt .nz-actions input{margin:0 6px 0 0!important}
+#nzxt .nz-hint{color:var(--nz-muted);font-size:.9em;margin-top:6px;max-width:240px}
+#nzxt .nz-chart{position:relative;flex:1 1 300px;min-width:260px}
+#nzxt svg{display:block;width:100%;height:auto;overflow:visible}
+#nzxt svg text{fill:currentColor;font-size:11px}
+#nzxt svg .nz-axis text{fill:var(--nz-muted)}
+#nzxt .nz-tip{position:absolute;pointer-events:none;padding:3px 7px;border-radius:4px;border:1px solid var(--nz-border);background:var(--nz-surface,#fff);white-space:nowrap;font-size:12px;display:none;transform:translate(-50%,-130%)}
+#nzxt .nz-error{color:var(--nz-bad);margin-top:4px}
+#nzxt .nz-presets{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:12px}
+#nzxt .nz-presets input{margin:0!important}
+#nzxt .nz-presets span{color:var(--nz-muted)}
+#nzxt .nz-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+#nzxt .nz-title input{width:170px!important;min-width:0!important;margin:0!important;padding:2px 6px!important;font-weight:bold;font-size:1em}
+#nzxt .nz-sub{color:var(--nz-muted);font-weight:normal;font-size:.9em}
+#nzxt .nz-note{display:block;color:var(--nz-muted);font-size:.9em;margin-top:2px;text-align:right}
+#nzxt .nz-warn{color:var(--nz-bad)}
 </style>
 
-<div markdown="1">
-**Status:** <span id="nzxt-state"><?=htmlspecialchars($running)?></span>
+<div id="nzxt">
+<p><b>Status:</b> <span id="nz-state"><?=htmlspecialchars($running)?></span></p>
 
-<table class="nzxt">
-<thead><tr><th>Fan</th><th>Source</th><th>Temp (&deg;C)</th><th>Speed (%)</th><th>RPM</th></tr></thead>
-<tbody id="nzxt-status"><tr><td colspan="5">Loading...</td></tr></tbody>
-</table>
-</div>
-
-<form markdown="1" name="nzxt_settings" method="POST" action="/update.php" target="progressFrame">
+<form markdown="1" name="nzxt_settings" method="POST" action="/update.php" target="progressFrame" onsubmit="return nzSubmit(this)">
 <input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
 <input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/rc.<?=$plugin?>">
 <input type="hidden" name="#arg[1]" value="apply">
+<?foreach (['HDD_THRESHOLDS','FAN1_SPEEDS','NVME_THRESHOLDS','FAN2_SPEEDS','MB_THRESHOLDS','FAN3_SPEEDS'] as $key):?>
+<input type="hidden" name="<?=$key?>" value="<?=htmlspecialchars($cfg[$key])?>" data-default="<?=htmlspecialchars($defaults[$key])?>">
+<?endforeach;?>
 
-Fan control service:
-: <select name="SERVICE">
-  <?=mk_option($cfg['SERVICE'], "enable", "Enabled")?>
-  <?=mk_option($cfg['SERVICE'], "disable", "Disabled")?>
+<div class="nz-presets">
+<input type="button" value="Cool &amp; quiet" onclick="nzPreset('quiet')" title="Quiet in the normal range, full speed before Unraid's temperature warnings">
+<span id="nz-preset-note">Fills in a curve for every fan. Nothing changes until you click Apply.</span>
+</div>
+
+<div class="nz-cards" id="nz-cards"></div>
+
+<h3>Fan rules</h3>
+
+Drive temperature used:
+: <select name="HDD_TEMP_MODE">
+  <?=mk_option($cfg['HDD_TEMP_MODE'], "max", "Hottest drive")?>
+  <?=mk_option($cfg['HDD_TEMP_MODE'], "avg", "Average of all drives")?>
   </select>
 
-Check interval (seconds):
-: <input type="number" name="INTERVAL" min="5" max="600" value="<?=$cfg['INTERVAL']?>" class="narrow">
-
-Number of fans:
-: <select name="FAN_QUANTITY">
-  <?=mk_option($cfg['FAN_QUANTITY'], "1", "1")?>
-  <?=mk_option($cfg['FAN_QUANTITY'], "2", "2")?>
-  <?=mk_option($cfg['FAN_QUANTITY'], "3", "3")?>
-  </select>
-
-> Temperature thresholds and fan speeds are comma-separated lists of the same length.
-> When the temperature reaches a threshold, the fan runs at the matching speed; below the first threshold it uses the first speed.
-
-<h3>Fan 1: array hard drives</h3>
-
-HDD temperature thresholds (&deg;C):
-: <input type="text" name="HDD_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['HDD_THRESHOLDS']?>">
-
-Fan 1 speeds (%):
-: <input type="text" name="FAN1_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN1_SPEEDS']?>">
+> Applies to both the hard drives (fan 1) and the NVMe drives (fan 2). "Hottest drive" stops one hot drive hiding behind cool ones.
 
 Fan 1 speed when all drives are spun down (%):
 : <input type="number" name="HDD_IDLE_SPEED" min="0" max="100" value="<?=$cfg['HDD_IDLE_SPEED']?>" class="narrow">
@@ -61,51 +78,296 @@ Fan 1 speed when all drives are spun down (%):
 Excluded drives:
 : <input type="text" name="EXCLUDED_DRIVES" value="<?=$cfg['EXCLUDED_DRIVES']?>" placeholder="e.g. sdb,disk5">
 
-> Temperatures come from Unraid's own disk status, so spun-down drives are never woken.
+> HDD temperatures come from Unraid's own disk status, so spun-down drives are never woken.
 > Exclude drives by device (sdb) or array slot (parity, disk5), comma-separated.
 
-<h3>Fan 2: NVMe</h3>
-
-NVMe temperature thresholds (&deg;C):
-: <input type="text" name="NVME_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['NVME_THRESHOLDS']?>">
-
-Fan 2 speeds (%):
-: <input type="text" name="FAN2_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN2_SPEEDS']?>">
-
-<h3>Fan 3: motherboard</h3>
-
-Motherboard sensor (hwmon name):
-: <input type="text" name="MB_SENSOR" value="<?=$cfg['MB_SENSOR']?>" class="narrow">
-
-Motherboard temperature thresholds (&deg;C):
-: <input type="text" name="MB_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['MB_THRESHOLDS']?>">
-
-Fan 3 speeds (%):
-: <input type="text" name="FAN3_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN3_SPEEDS']?>">
-
-Fan 3 follows fan 2 above NVMe temp (&deg;C):
+Fan 3 at least as fast as fan 2 above NVMe temp (&deg;C):
 : <input type="number" name="FAN3_FOLLOW_NVME_ABOVE" min="0" max="100" value="<?=$cfg['FAN3_FOLLOW_NVME_ABOVE']?>" class="narrow">
 
 > Leave empty to disable.
 
-<h3>Safety</h3>
+Motherboard sensor (hwmon name):
+: <input type="text" name="MB_SENSOR" value="<?=$cfg['MB_SENSOR']?>" class="narrow">
 
-Speed when service stops (%):
+<h3>Service</h3>
+
+Fan control service:
+: <select name="SERVICE">
+  <?=mk_option($cfg['SERVICE'], "enable", "Enabled")?>
+  <?=mk_option($cfg['SERVICE'], "disable", "Disabled")?>
+  </select>
+
+Number of fans:
+: <select name="FAN_QUANTITY" onchange="nzShowCards()">
+  <?=mk_option($cfg['FAN_QUANTITY'], "1", "1")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "2", "2")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "3", "3")?>
+  </select>
+
+Check interval (seconds):
+: <input type="number" name="INTERVAL" min="5" max="600" value="<?=$cfg['INTERVAL']?>" class="narrow">
+
+Safe speed (%):
 : <input type="number" name="STOP_SPEED" min="0" max="100" value="<?=$cfg['STOP_SPEED']?>" class="narrow">
+
+> Used when the service stops and for any fan whose temperature sensor can't be read.
+
+Notifications:
+: <select name="NOTIFY">
+  <?=mk_option($cfg['NOTIFY'], "yes", "Yes")?>
+  <?=mk_option($cfg['NOTIFY'], "no", "No")?>
+  </select>
+
+> Unraid notifications when a fan stops, the controller goes missing, or the watchdog restarts the service.
+
+Dashboard tile:
+: <select name="DASHBOARD">
+  <?=mk_option($cfg['DASHBOARD'], "yes", "Show")?>
+  <?=mk_option($cfg['DASHBOARD'], "no", "Hide")?>
+  </select>
 
 &nbsp;
 : <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
 </form>
+</div>
 
 <script>
-function nzxtRefresh() {
-  $.get('/plugins/<?=$plugin?>/include/status.php', function(data) {
-    $('#nzxt-status').html(data.rows);
-    $('#nzxt-state').text(data.state);
+var nzFans = [
+  {n:1, sub:'Fan 1, follows the array hard drives', t:'HDD_THRESHOLDS', s:'FAN1_SPEEDS', name:<?=json_encode($cfg['FAN1_NAME'])?>},
+  {n:2, sub:'Fan 2, follows the NVMe drives', t:'NVME_THRESHOLDS', s:'FAN2_SPEEDS', name:<?=json_encode($cfg['FAN2_NAME'])?>},
+  {n:3, sub:'Fan 3, follows the motherboard', t:'MB_THRESHOLDS', s:'FAN3_SPEEDS', name:<?=json_encode($cfg['FAN3_NAME'])?>}
+];
+var nzLive = {};
+// [temp, speed] points. Quiet through normal temps, full speed by Unraid's default warnings (HDD 51, SSD 60-70).
+var nzPresets = {
+  quiet: {name: 'Cool & quiet', 1: [[35,20],[40,30],[44,45],[48,75],[51,100]], 2: [[40,10],[50,25],[60,60],[70,100]], 3: [[30,20],[38,30],[45,60],[55,100]]}
+};
+
+function nzPreset(key) {
+  var p = nzPresets[key];
+  nzFans.forEach(function(fan) {
+    fan.steps = p[fan.n].map(function(pt){ return {t: pt[0], s: pt[1]}; });
+    nzRenderRows(fan); nzDraw(fan);
+  });
+  $('#nz-preset-note').text(p.name + ' curves filled in. Click Apply to save them.');
+}
+var NS = 'http://www.w3.org/2000/svg';
+var W = 380, H = 190, M = {l:34, r:12, t:12, b:28};
+
+function nzList(v) { return String(v || '').split(',').map(function(x){ return parseInt(x, 10); }).filter(function(x){ return !isNaN(x); }); }
+function nzHidden(name) { return document.querySelector('#nzxt input[type=hidden][name="' + name + '"]'); }
+
+function nzLoad(fan, useDefault) {
+  var t = nzHidden(fan.t), s = nzHidden(fan.s);
+  var ts = nzList(useDefault ? t.dataset.default : t.value), ss = nzList(useDefault ? s.dataset.default : s.value);
+  fan.steps = ts.map(function(temp, i){ return {t: temp, s: ss[i] !== undefined ? ss[i] : ss[ss.length - 1] || 0}; });
+  if (!fan.steps.length) fan.steps = [{t: 30, s: 30}];
+}
+
+// Same rule as the daemon: linear ramp between points, first/last speed outside them.
+function nzSpeedAt(steps, temp) {
+  var p = steps.slice().sort(function(a, b){ return a.t - b.t; });
+  if (temp <= p[0].t) return p[0].s;
+  for (var i = 1; i < p.length; i++)
+    if (temp < p[i].t) return p[i-1].s + Math.trunc((p[i].s - p[i-1].s) * (temp - p[i-1].t) / (p[i].t - p[i-1].t));
+  return p[p.length - 1].s;
+}
+
+function el(tag, attrs, parent) {
+  var e = tag.indexOf('svg:') === 0 ? document.createElementNS(NS, tag.slice(4)) : document.createElement(tag);
+  for (var k in attrs || {}) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function nzBuildCard(fan) {
+  var card = el('div', {'class': 'nz-card', id: 'nz-fan' + fan.n});
+  var head = el('div', {'class': 'nz-head'}, card);
+  var title = el('span', {'class': 'nz-title'}, head);
+  var name = el('input', {type: 'text', name: 'FAN' + fan.n + '_NAME', maxlength: 24, pattern: '[^"|\\\\$`]*', title: 'Fan name', 'aria-label': 'Fan ' + fan.n + ' name'}, title);
+  name.value = fan.name || ('Fan ' + fan.n);
+  el('span', {'class': 'nz-sub'}, title).textContent = fan.sub;
+  var liveBox = el('span', {}, head);
+  fan.liveEl = el('span', {'class': 'nz-live'}, liveBox);
+  fan.noteEl = el('span', {'class': 'nz-note'}, liveBox);
+  var body = el('div', {'class': 'nz-body'}, card);
+  var left = el('div', {}, body);
+  var table = el('table', {'class': 'nz-steps'}, left);
+  el('thead', {}, table).innerHTML = '<tr><th>Temp &deg;C</th><th>Fan %</th><th></th></tr>';
+  fan.tbody = el('tbody', {}, table);
+  var actions = el('div', {'class': 'nz-actions'}, left);
+  var add = el('input', {type: 'button', value: '+ Add point'}, actions);
+  add.onclick = function(){ nzAddStep(fan); };
+  var reset = el('input', {type: 'button', value: 'Reset to default'}, actions);
+  reset.onclick = function(){ nzLoad(fan, true); nzRenderRows(fan); nzDraw(fan); };
+  var ident = el('input', {type: 'button', value: 'Identify', title: 'Run this fan at 100% for 10 seconds so you can see which one it is'}, actions);
+  ident.onclick = function(){ nzIdentify(fan, ident); };
+  fan.errEl = el('div', {'class': 'nz-error'}, left);
+  el('div', {'class': 'nz-hint'}, left).textContent = 'The fan ramps evenly between points, and holds the first and last speed outside them.';
+  var chart = el('div', {'class': 'nz-chart'}, body);
+  fan.svg = el('svg:svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img'}, chart);
+  fan.tip = el('div', {'class': 'nz-tip'}, chart);
+  fan.svg.addEventListener('mousemove', function(e){ nzHover(fan, e); });
+  fan.svg.addEventListener('mouseleave', function(){ fan.tip.style.display = 'none'; if (fan.cross) fan.cross.style.display = 'none'; });
+  return card;
+}
+
+function nzRenderRows(fan) {
+  fan.tbody.innerHTML = '';
+  fan.steps.forEach(function(step, i) {
+    var tr = el('tr', {}, fan.tbody);
+    var t = el('input', {type: 'number', min: 0, max: 100, value: step.t, 'aria-label': 'Temperature'}, el('td', {}, tr));
+    var s = el('input', {type: 'number', min: 0, max: 100, step: 5, value: step.s, 'aria-label': 'Fan speed'}, el('td', {}, tr));
+    var x = el('input', {type: 'button', value: '×', title: 'Remove point', 'class': 'nz-x'}, el('td', {}, tr));
+    x.disabled = fan.steps.length < 2;
+    t.oninput = function(){ step.t = parseInt(t.value, 10); nzDraw(fan); };
+    s.oninput = function(){ step.s = Math.max(0, Math.min(100, parseInt(s.value, 10) || 0)); nzDraw(fan); };
+    x.onclick = function(){ fan.steps.splice(i, 1); nzRenderRows(fan); nzDraw(fan); };
+    step.tEl = t;
+  });
+}
+
+function nzAddStep(fan) {
+  var last = fan.steps.reduce(function(a, b){ return b.t > a.t ? b : a; });
+  fan.steps.push({t: Math.min(100, last.t + 5), s: Math.min(100, last.s + 10)});
+  nzRenderRows(fan); nzDraw(fan);
+}
+
+function nzValidate(fan) {
+  var seen = {}, msg = '';
+  fan.steps.forEach(function(st){ st.tEl && st.tEl.classList.remove('nz-invalid'); });
+  fan.steps.forEach(function(st) {
+    if (isNaN(st.t)) { msg = 'Every point needs a temperature.'; st.tEl && st.tEl.classList.add('nz-invalid'); }
+    else if (seen[st.t]) { msg = 'Two points use ' + st.t + '°C.'; st.tEl && st.tEl.classList.add('nz-invalid'); seen[st.t].tEl && seen[st.t].tEl.classList.add('nz-invalid'); }
+    seen[st.t] = st;
+  });
+  fan.errEl.textContent = msg;
+  return !msg;
+}
+
+function nzDraw(fan) {
+  var svg = fan.svg; svg.innerHTML = '';
+  if (!nzValidate(fan)) return;
+  var steps = fan.steps.slice().sort(function(a, b){ return a.t - b.t; });
+  var live = nzLive[fan.n] && nzLive[fan.n].temp !== null ? nzLive[fan.n] : null;
+  var lo = Math.min(20, steps[0].t - 5), hi = Math.max(60, steps[steps.length - 1].t + 10);
+  if (live) { lo = Math.min(lo, live.temp - 5); hi = Math.max(hi, live.temp + 5); }
+  lo = Math.floor(lo / 10) * 10; hi = Math.ceil(hi / 10) * 10;
+  var x = function(v){ return M.l + (v - lo) / (hi - lo) * (W - M.l - M.r); };
+  var y = function(v){ return H - M.b - v / 100 * (H - M.t - M.b); };
+  fan.scale = {x: x, lo: lo, hi: hi, steps: steps};
+
+  var axis = el('svg:g', {'class': 'nz-axis'}, svg);
+  [0, 25, 50, 75, 100].forEach(function(v) {
+    el('svg:line', {x1: M.l, x2: W - M.r, y1: y(v), y2: y(v), stroke: 'var(--nz-grid)', 'stroke-width': 1}, axis);
+    el('svg:text', {x: M.l - 6, y: y(v) + 4, 'text-anchor': 'end'}, axis).textContent = v + '%';
+  });
+  for (var v = lo; v <= hi; v += 10)
+    el('svg:text', {x: x(v), y: H - M.b + 16, 'text-anchor': 'middle'}, axis).textContent = v + '°';
+
+  var d = 'M' + x(lo) + ',' + y(steps[0].s);
+  steps.forEach(function(st){ d += 'L' + x(st.t) + ',' + y(st.s); });
+  d += 'H' + x(hi);
+  el('svg:path', {d: d, fill: 'none', stroke: 'var(--nz-series)', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
+  steps.forEach(function(st) {
+    el('svg:circle', {cx: x(st.t), cy: y(st.s), r: 4, fill: 'var(--nz-series)', stroke: 'var(--nz-surface,#fff)', 'stroke-width': 2}, svg);
+  });
+
+  fan.cross = el('svg:line', {y1: M.t, y2: H - M.b, stroke: 'var(--nz-muted)', 'stroke-width': 1, style: 'display:none'}, svg);
+
+  if (live) {
+    var lx = x(live.temp), ly = y(live.speed);
+    el('svg:line', {x1: lx, x2: lx, y1: M.t, y2: H - M.b, stroke: 'currentColor', 'stroke-width': 1, opacity: .45}, svg);
+    el('svg:circle', {cx: lx, cy: ly, r: 6, fill: 'currentColor', stroke: 'var(--nz-surface,#fff)', 'stroke-width': 2}, svg);
+    var right = lx > W - 90;
+    el('svg:text', {x: lx + (right ? -10 : 10), y: Math.max(M.t + 10, ly - 10), 'text-anchor': right ? 'end' : 'start', 'font-weight': 'bold'}, svg)
+      .textContent = 'now ' + live.temp + '° → ' + live.speed + '%';
+  }
+  svg.setAttribute('aria-label', fan.title + ' curve: ' + steps.map(function(s){ return s.t + '°C ' + s.s + '%'; }).join(', '));
+}
+
+function nzHover(fan, e) {
+  if (!fan.scale) return;
+  var r = fan.svg.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W;
+  if (px < M.l || px > W - M.r) { fan.tip.style.display = 'none'; fan.cross.style.display = 'none'; return; }
+  var s = fan.scale, temp = Math.round(s.lo + (px - M.l) / (W - M.l - M.r) * (s.hi - s.lo));
+  var sx = s.x(temp);
+  fan.cross.setAttribute('x1', sx); fan.cross.setAttribute('x2', sx); fan.cross.style.display = '';
+  fan.tip.textContent = temp + '°C → ' + nzSpeedAt(s.steps, temp) + '%';
+  fan.tip.style.left = (sx / W * r.width) + 'px';
+  fan.tip.style.top = (M.t / H * r.height + 14) + 'px';
+  fan.tip.style.display = 'block';
+}
+
+function nzShowCards() {
+  var n = parseInt(document.querySelector('#nzxt select[name=FAN_QUANTITY]').value, 10);
+  nzFans.forEach(function(fan){ fan.card.style.display = fan.n <= n ? '' : 'none'; });
+}
+
+function nzSubmit(form) {
+  var ok = true;
+  nzFans.forEach(function(fan) {
+    if (!nzValidate(fan)) { ok = false; return; }
+    var steps = fan.steps.slice().sort(function(a, b){ return a.t - b.t; });
+    nzHidden(fan.t).value = steps.map(function(s){ return s.t; }).join(',');
+    nzHidden(fan.s).value = steps.map(function(s){ return s.s; }).join(',');
+    fan.steps = steps; nzRenderRows(fan); nzDraw(fan);
+  });
+  return ok;
+}
+
+function nzIdentify(fan, btn) {
+  btn.disabled = true; btn.value = 'Spinning...';
+  $.post('/plugins/nzxt-fancontrol/include/action.php', {action: 'identify', fan: fan.n, csrf_token: csrf_token}, function(r) {
+    if (!r.ok) $(fan.noteEl).text(r.msg).addClass('nz-warn');
+    setTimeout(nzRefresh, 500);
+  }, 'json').always(function() {
+    setTimeout(function(){ btn.disabled = false; btn.value = 'Identify'; nzRefresh(); }, 10500);
+  });
+}
+
+function nzRefresh() {
+  $.get('/plugins/nzxt-fancontrol/include/status.php', function(data) {
+    $('#nz-state').text(data.controller === 'missing' ? 'NZXT controller not found. Check its USB cable; control resumes when it is back.' : data.state)
+      .toggleClass('nz-warn', data.controller === 'missing');
+    nzLive = {};
+    (data.fans || []).forEach(function(f) { nzLive[f.fan] = f; });
+    nzFans.forEach(function(fan) {
+      var f = nzLive[fan.n];
+      fan.liveEl.innerHTML = f ? f.source + ' <b>' + (f.temp === null ? '?' : f.temp + '&deg;C') + '</b> &middot; <b>' + f.speed + '%</b> &middot; ' + f.rpm + ' RPM &middot; ' + f.mode : 'no data';
+      var note = f ? f.note : '';
+      if (f && f.mode === 'DC' && !note) note = 'DC (3-pin) fan: the controller varies voltage, so its speed range may be narrow';
+      $(fan.noteEl).text(note).toggleClass('nz-warn', !!(f && /stopped|safe speed/.test(f.note)));
+      nzDraw(fan);
+    });
   }, 'json');
 }
+
+// Pick dark-mode steps from the actual Unraid theme background.
+function nzTheme() {
+  var bg = [255, 255, 255];
+  for (var node = document.getElementById('nzxt'); node; node = node.parentElement) {
+    var c = getComputedStyle(node).backgroundColor.match(/[\d.]+/g);
+    if (c && (c.length < 4 || +c[3] > 0)) { bg = c; break; }
+  }
+  var lum = (0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]) / 255;
+  var root = document.getElementById('nzxt');
+  root.classList.toggle('nz-dark', lum < 0.5);
+  root.style.setProperty('--nz-surface', 'rgb(' + bg.slice(0, 3).join(',') + ')');
+}
+
 $(function() {
-  nzxtRefresh();
-  setInterval(nzxtRefresh, 5000);
+  nzTheme();
+  var cards = document.getElementById('nz-cards');
+  nzFans.forEach(function(fan) {
+    nzLoad(fan);
+    fan.card = nzBuildCard(fan);
+    cards.appendChild(fan.card);
+    nzRenderRows(fan);
+    nzDraw(fan);
+  });
+  nzShowCards();
+  nzRefresh();
+  setInterval(nzRefresh, 5000);
 });
 </script>
