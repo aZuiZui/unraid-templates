@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "nzxt-fancontrol">
 <!ENTITY author    "aZuiZui">
-<!ENTITY version   "2026.10.17h">
+<!ENTITY version   "2026.10.17i">
 <!ENTITY launch    "Settings/NZXTFanControl">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/aZuiZui/unraid-templates/main/nzxt-fancontrol/nzxt-fancontrol.plg">
 <!ENTITY support   "https://github.com/aZuiZui/unraid-templates/issues">
@@ -13,6 +13,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="&support;" min="6.12.0" icon="snowflake-o">
 
 <CHANGES>
+###2026.10.17i
+- Fix: Apply stayed greyed out after using Cool and quiet, Add point, Remove, Reset or editing curve rows
+
 ###2026.10.17h
 - Reverted the Airflow tile to the 2026.10.17f layout: fan names and set speed on the built-in entries, temperatures on hover
 
@@ -228,6 +231,10 @@ var nzPresets = {
   quiet: {name: 'Cool & quiet', 1: [[35,20],[40,30],[44,45],[48,75],[51,100]], 2: [[40,10],[50,25],[60,60],[70,100]], 3: [[30,20],[38,30],[45,60],[55,100]]}
 };
 
+// Unraid only enables Apply on input/change events from fields that existed at page load,
+// so the curve editor's own changes (rows, buttons) report through one of those.
+function nzDirty() { $('#nzxt input[name=INTERVAL]').trigger('change'); }
+
 function nzPreset(key) {
   var p = nzPresets[key];
   nzFans.forEach(function(fan) {
@@ -235,6 +242,7 @@ function nzPreset(key) {
     nzRenderRows(fan); nzDraw(fan);
   });
   $('#nz-preset-note').text(p.name + ' curves filled in. Click Apply to save them.');
+  nzDirty();
 }
 var NS = 'http://www.w3.org/2000/svg';
 var W = 380, H = 190, M = {l:34, r:12, t:12, b:28};
@@ -271,6 +279,7 @@ function nzBuildCard(fan) {
   var title = el('span', {'class': 'nz-title'}, head);
   var name = el('input', {type: 'text', name: 'FAN' + fan.n + '_NAME', maxlength: 24, pattern: '[^"|\\\\$`]*', title: 'Fan name', 'aria-label': 'Fan ' + fan.n + ' name'}, title);
   name.value = fan.name || ('Fan ' + fan.n);
+  name.oninput = nzDirty;
   el('span', {'class': 'nz-sub'}, title).textContent = fan.sub;
   var liveBox = el('span', {}, head);
   fan.liveEl = el('span', {'class': 'nz-live'}, liveBox);
@@ -284,7 +293,7 @@ function nzBuildCard(fan) {
   var add = el('input', {type: 'button', value: '+ Add point'}, actions);
   add.onclick = function(){ nzAddStep(fan); };
   var reset = el('input', {type: 'button', value: 'Reset to default'}, actions);
-  reset.onclick = function(){ nzLoad(fan, true); nzRenderRows(fan); nzDraw(fan); };
+  reset.onclick = function(){ nzLoad(fan, true); nzRenderRows(fan); nzDraw(fan); nzDirty(); };
   var ident = el('input', {type: 'button', value: 'Identify', title: 'Run this fan at 100% for 10 seconds so you can see which one it is'}, actions);
   ident.onclick = function(){ nzIdentify(fan, ident); };
   fan.errEl = el('div', {'class': 'nz-error'}, left);
@@ -305,9 +314,9 @@ function nzRenderRows(fan) {
     var s = el('input', {type: 'number', min: 0, max: 100, step: 5, value: step.s, 'aria-label': 'Fan speed'}, el('td', {}, tr));
     var x = el('input', {type: 'button', value: '×', title: 'Remove point', 'class': 'nz-x'}, el('td', {}, tr));
     x.disabled = fan.steps.length < 2;
-    t.oninput = function(){ step.t = parseInt(t.value, 10); nzDraw(fan); };
-    s.oninput = function(){ step.s = Math.max(0, Math.min(100, parseInt(s.value, 10) || 0)); nzDraw(fan); };
-    x.onclick = function(){ fan.steps.splice(i, 1); nzRenderRows(fan); nzDraw(fan); };
+    t.oninput = function(){ step.t = parseInt(t.value, 10); nzDraw(fan); nzDirty(); };
+    s.oninput = function(){ step.s = Math.max(0, Math.min(100, parseInt(s.value, 10) || 0)); nzDraw(fan); nzDirty(); };
+    x.onclick = function(){ fan.steps.splice(i, 1); nzRenderRows(fan); nzDraw(fan); nzDirty(); };
     step.tEl = t;
   });
 }
@@ -315,7 +324,7 @@ function nzRenderRows(fan) {
 function nzAddStep(fan) {
   var last = fan.steps.reduce(function(a, b){ return b.t > a.t ? b : a; });
   fan.steps.push({t: Math.min(100, last.t + 5), s: Math.min(100, last.s + 10)});
-  nzRenderRows(fan); nzDraw(fan);
+  nzRenderRows(fan); nzDraw(fan); nzDirty();
 }
 
 function nzValidate(fan) {

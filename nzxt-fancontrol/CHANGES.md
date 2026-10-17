@@ -1,3 +1,6 @@
+###2026.10.17i
+- Fix: Apply stayed greyed out after using Cool and quiet, Add point, Remove, Reset or editing curve rows
+
 ###2026.10.17h
 - Reverted the Airflow tile to the 2026.10.17f layout: fan names and set speed on the built-in entries, temperatures on hover
 
