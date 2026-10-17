@@ -127,7 +127,7 @@ Dashboard:
   <?=mk_option($cfg['DASHBOARD'], "no", "Hide")?>
   </select>
 
-> "Add to Airflow tile" puts the fan names and set speed on Unraid's own Airflow tile (hover for temperatures).
+> "Add to Airflow tile" shows each fan's name, temperature, speed bar and RPM inside Unraid's own Airflow tile.
 > It falls back to a separate tile if the Airflow tile isn't there.
 
 &nbsp;
