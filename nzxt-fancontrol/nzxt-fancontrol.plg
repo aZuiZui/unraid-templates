@@ -1,0 +1,426 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "nzxt-fancontrol">
+<!ENTITY author    "aZuiZui">
+<!ENTITY version   "2026.10.17">
+<!ENTITY launch    "Settings/NZXTFanControl">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/aZuiZui/unraid-templates/main/nzxt-fancontrol/nzxt-fancontrol.plg">
+<!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
+<!ENTITY flash     "/boot/config/plugins/&name;">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.12.0" icon="snowflake-o">
+
+<CHANGES>
+###2026.10.17
+- Initial release: replaces the minimal-liquidctl Docker container
+- Uses the in-kernel nzxt-smart2 driver (no liquidctl / Python / Docker)
+- HDD temps from Unraid disk status, so spun-down drives are never woken
+- Settings page with live fan status
+</CHANGES>
+
+<!-- Stop a running daemon before files are replaced (upgrade). -->
+<FILE Run="/bin/bash">
+<INLINE>
+[ -x &emhttp;/scripts/rc.&name; ] &amp;&amp; &emhttp;/scripts/rc.&name; stop
+rm -rf &emhttp;
+exit 0
+</INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/default.cfg">
+<INLINE><![CDATA[SERVICE="enable"
+INTERVAL="60"
+HDD_THRESHOLDS="30,35,40,45,50"
+FAN1_SPEEDS="20,30,40,50,100"
+HDD_IDLE_SPEED="0"
+EXCLUDED_DRIVES=""
+NVME_THRESHOLDS="30,35,40,45,50"
+FAN2_SPEEDS="10,20,50,70,100"
+MB_SENSOR="acpitz"
+MB_THRESHOLDS="30,35,40,45,50"
+FAN3_SPEEDS="20,25,30,40,100"
+FAN3_FOLLOW_NVME_ABOVE="40"
+FAN_QUANTITY="3"
+STOP_SPEED="60"
+]]></INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/NZXTFanControl.page">
+<INLINE><![CDATA[Menu="Utilities"
+Title="NZXT Fan Control"
+Icon="snowflake-o"
+Tag="snowflake-o"
+---
+<?PHP
+$plugin = "nzxt-fancontrol";
+$cfg = parse_plugin_cfg($plugin);
+$running = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
+$list = '^\s*\d+(\s*,\s*\d+)*\s*$';
+?>
+<style>
+table.nzxt{width:auto;margin:0 0 20px 0}
+table.nzxt td,table.nzxt th{padding:4px 16px 4px 0;text-align:left}
+</style>
+
+<div markdown="1">
+**Status:** <span id="nzxt-state"><?=htmlspecialchars($running)?></span>
+
+<table class="nzxt">
+<thead><tr><th>Fan</th><th>Source</th><th>Temp (&deg;C)</th><th>Speed (%)</th><th>RPM</th></tr></thead>
+<tbody id="nzxt-status"><tr><td colspan="5">Loading...</td></tr></tbody>
+</table>
+</div>
+
+<form markdown="1" name="nzxt_settings" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
+<input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/rc.<?=$plugin?>">
+<input type="hidden" name="#arg[1]" value="apply">
+
+Fan control service:
+: <select name="SERVICE">
+  <?=mk_option($cfg['SERVICE'], "enable", "Enabled")?>
+  <?=mk_option($cfg['SERVICE'], "disable", "Disabled")?>
+  </select>
+
+Check interval (seconds):
+: <input type="number" name="INTERVAL" min="5" max="600" value="<?=$cfg['INTERVAL']?>" class="narrow">
+
+Number of fans:
+: <select name="FAN_QUANTITY">
+  <?=mk_option($cfg['FAN_QUANTITY'], "1", "1")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "2", "2")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "3", "3")?>
+  </select>
+
+> Temperature thresholds and fan speeds are comma-separated lists of the same length.
+> When the temperature reaches a threshold, the fan runs at the matching speed; below the first threshold it uses the first speed.
+
+<h3>Fan 1: array hard drives</h3>
+
+HDD temperature thresholds (&deg;C):
+: <input type="text" name="HDD_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['HDD_THRESHOLDS']?>">
+
+Fan 1 speeds (%):
+: <input type="text" name="FAN1_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN1_SPEEDS']?>">
+
+Fan 1 speed when all drives are spun down (%):
+: <input type="number" name="HDD_IDLE_SPEED" min="0" max="100" value="<?=$cfg['HDD_IDLE_SPEED']?>" class="narrow">
+
+Excluded drives:
+: <input type="text" name="EXCLUDED_DRIVES" value="<?=$cfg['EXCLUDED_DRIVES']?>" placeholder="e.g. sdb,disk5">
+
+> Temperatures come from Unraid's own disk status, so spun-down drives are never woken.
+> Exclude drives by device (sdb) or array slot (parity, disk5), comma-separated.
+
+<h3>Fan 2: NVMe</h3>
+
+NVMe temperature thresholds (&deg;C):
+: <input type="text" name="NVME_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['NVME_THRESHOLDS']?>">
+
+Fan 2 speeds (%):
+: <input type="text" name="FAN2_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN2_SPEEDS']?>">
+
+<h3>Fan 3: motherboard</h3>
+
+Motherboard sensor (hwmon name):
+: <input type="text" name="MB_SENSOR" value="<?=$cfg['MB_SENSOR']?>" class="narrow">
+
+Motherboard temperature thresholds (&deg;C):
+: <input type="text" name="MB_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['MB_THRESHOLDS']?>">
+
+Fan 3 speeds (%):
+: <input type="text" name="FAN3_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN3_SPEEDS']?>">
+
+Fan 3 follows fan 2 above NVMe temp (&deg;C):
+: <input type="number" name="FAN3_FOLLOW_NVME_ABOVE" min="0" max="100" value="<?=$cfg['FAN3_FOLLOW_NVME_ABOVE']?>" class="narrow">
+
+> Leave empty to disable.
+
+<h3>Safety</h3>
+
+Speed when service stops (%):
+: <input type="number" name="STOP_SPEED" min="0" max="100" value="<?=$cfg['STOP_SPEED']?>" class="narrow">
+
+&nbsp;
+: <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
+</form>
+
+<script>
+function nzxtRefresh() {
+  $.get('/plugins/<?=$plugin?>/include/status.php', function(data) {
+    $('#nzxt-status').html(data.rows);
+    $('#nzxt-state').text(data.state);
+  }, 'json');
+}
+$(function() {
+  nzxtRefresh();
+  setInterval(nzxtRefresh, 5000);
+});
+</script>
+]]></INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/include/status.php">
+<INLINE><![CDATA[<?PHP
+$plugin = "nzxt-fancontrol";
+$status = @parse_ini_file("/var/run/$plugin.status") ?: [];
+$state = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
+
+$rows = "";
+for ($fan = 1; $fan <= 3; $fan++) {
+  if (!isset($status["fan$fan"])) continue;
+  [$source, $temp, $speed, $rpm] = explode("|", $status["fan$fan"]);
+  $rows .= "<tr><td>$fan</td><td>".htmlspecialchars($source)."</td><td>".(int)$temp."</td><td>".(int)$speed."</td><td>".(int)$rpm."</td></tr>";
+}
+if ($rows === "") $rows = "<tr><td colspan='5'>No data (service stopped?)</td></tr>";
+if (isset($status['updated'])) $state .= " - updated ".$status['updated'];
+
+header('Content-Type: application/json');
+echo json_encode(['state' => $state, 'rows' => $rows]);
+?>
+]]></INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/scripts/fancontrol.sh" Mode="0755">
+<INLINE><![CDATA[#!/bin/bash
+# NZXT RGB & Fan Controller daemon for Unraid.
+# Fan1 -> HDD, Fan2 -> NVMe, Fan3 -> motherboard.
+# Talks to the in-kernel nzxt-smart2 hwmon driver; no liquidctl needed.
+
+PLUGIN=nzxt-fancontrol
+DEFAULT_CFG=/usr/local/emhttp/plugins/$PLUGIN/default.cfg
+USER_CFG=/boot/config/plugins/$PLUGIN/$PLUGIN.cfg
+DISKS_INI=/var/local/emhttp/disks.ini
+STATUS=/var/run/$PLUGIN.status
+
+log() { logger -t "$PLUGIN" -- "$*"; }
+
+load_config() {
+  source "$DEFAULT_CFG"
+  [[ -f $USER_CFG ]] && source "$USER_CFG"
+  read -ra HDD_T <<< "${HDD_THRESHOLDS//,/ }"
+  read -ra FAN1_S <<< "${FAN1_SPEEDS//,/ }"
+  read -ra NVME_T <<< "${NVME_THRESHOLDS//,/ }"
+  read -ra FAN2_S <<< "${FAN2_SPEEDS//,/ }"
+  read -ra MB_T <<< "${MB_THRESHOLDS//,/ }"
+  read -ra FAN3_S <<< "${FAN3_SPEEDS//,/ }"
+  (( ${#HDD_T[@]} == ${#FAN1_S[@]} )) || log "warning: HDD thresholds and fan 1 speeds differ in length"
+  (( ${#NVME_T[@]} == ${#FAN2_S[@]} )) || log "warning: NVMe thresholds and fan 2 speeds differ in length"
+  (( ${#MB_T[@]} == ${#FAN3_S[@]} )) || log "warning: MB thresholds and fan 3 speeds differ in length"
+}
+
+hwmon_by_name() {
+  local hw
+  for hw in /sys/class/hwmon/hwmon*; do
+    [[ $(< "$hw/name") == "$1" ]] && echo "$hw"
+  done
+}
+
+# Speed for the highest threshold reached; below the first threshold uses the first speed.
+curve() {
+  local temp=$1 i
+  local -n t=$2 s=$3
+  local speed=${s[0]}
+  for i in "${!t[@]}"; do
+    if (( temp >= t[i] )); then speed=${s[i]:-${s[-1]}}; else break; fi
+  done
+  echo "$speed"
+}
+
+# Average temp of spinning sd* disks from Unraid's own state (never wakes a drive).
+# Prints "<avg> <online> <standby>".
+read_hdd() {
+  local excluded=",${EXCLUDED_DRIVES// /},"
+  awk -F'"' -v ex="$excluded" '
+    /^\[/ { flush(); name=dev=type=temp=down="" ; next }
+    /^name=/     { name=$2 }
+    /^device=/   { dev=$2 }
+    /^type=/     { type=$2 }
+    /^temp=/     { temp=$2 }
+    /^spundown=/ { down=$2 }
+    function flush() {
+      if (dev !~ /^sd/ || type == "Flash") return
+      if (index(ex, "," dev ",") || index(ex, "," name ",")) return
+      if (down == "1") { standby++; return }
+      if (temp ~ /^[0-9]+$/) { sum += temp; online++ }
+    }
+    END { flush(); printf "%d %d %d\n", (online ? sum / online : 0), online, standby }
+  ' "$DISKS_INI" 2>/dev/null || echo "0 0 0"
+}
+
+# Average temp across every nvme hwmon sensor. Prints "<avg> <count>".
+read_nvme() {
+  local hw sum=0 n=0
+  for hw in $(hwmon_by_name nvme); do
+    [[ -r $hw/temp1_input ]] || continue
+    (( sum += $(< "$hw/temp1_input") / 1000, n++ ))
+  done
+  echo "$(( n ? sum / n : 0 )) $n"
+}
+
+read_mb() {
+  local hw
+  hw=$(hwmon_by_name "$MB_SENSOR" | head -n1)
+  [[ -r $hw/temp1_input ]] && echo $(( $(< "$hw/temp1_input") / 1000 )) || echo 0
+}
+
+set_fan() {
+  local fan=$1 pct=$2
+  local pwm=$(( (pct * 255 + 50) / 100 ))
+  [[ $(< "$NZXT/pwm${fan}_enable") == 1 ]] || echo 1 > "$NZXT/pwm${fan}_enable"
+  [[ $(< "$NZXT/pwm$fan") == "$pwm" ]] || echo "$pwm" > "$NZXT/pwm$fan"
+}
+
+set_all() {
+  local fan
+  for (( fan = 1; fan <= FAN_QUANTITY; fan++ )); do set_fan "$fan" "$1"; done
+}
+
+find_controller() {
+  NZXT=$(hwmon_by_name nzxtsmart2 | head -n1)
+  if [[ -z $NZXT ]]; then
+    modprobe nzxt-smart2 2>/dev/null
+    sleep 2
+    NZXT=$(hwmon_by_name nzxtsmart2 | head -n1)
+  fi
+  [[ -n $NZXT ]]
+}
+
+declare -A LAST
+
+tick() {
+  local fan1 fan2 fan3 fan speed rpm
+  read -r HDD_TEMP HDD_ON HDD_SB <<< "$(read_hdd)"
+  read -r NVME_TEMP NVME_N <<< "$(read_nvme)"
+  MB_TEMP=$(read_mb)
+
+  if (( HDD_ON == 0 && HDD_SB > 0 )); then
+    fan1=$HDD_IDLE_SPEED
+  else
+    fan1=$(curve "$HDD_TEMP" HDD_T FAN1_S)
+  fi
+  fan2=$(curve "$NVME_TEMP" NVME_T FAN2_S)
+  fan3=$(curve "$MB_TEMP" MB_T FAN3_S)
+  [[ -n $FAN3_FOLLOW_NVME_ABOVE ]] && (( NVME_TEMP > FAN3_FOLLOW_NVME_ABOVE )) && fan3=$fan2
+
+  local -a speeds=("" "$fan1" "$fan2" "$fan3")
+  local -a temps=("" "$HDD_TEMP" "$NVME_TEMP" "$MB_TEMP")
+  local -a sources=("" "HDD ($HDD_ON up, $HDD_SB down)" "NVMe ($NVME_N)" "MB ($MB_SENSOR)")
+  {
+    echo "updated=\"$(date '+%F %T')\""
+    for (( fan = 1; fan <= FAN_QUANTITY; fan++ )); do
+      speed=${speeds[fan]}
+      set_fan "$fan" "$speed"
+      rpm=$(< "$NZXT/fan${fan}_input")
+      if [[ ${LAST[$fan]} != "$speed" ]]; then
+        log "fan$fan -> $speed% (${sources[fan]} ${temps[fan]}C)"
+        LAST[$fan]=$speed
+      fi
+      (( speed > 0 && rpm == 0 )) && log "warning: fan$fan set to $speed% but reports 0 RPM"
+      echo "fan${fan}=\"${sources[fan]}|${temps[fan]}|$speed|$rpm\""
+    done
+  } > "$STATUS.tmp" && mv "$STATUS.tmp" "$STATUS"
+}
+
+shutdown() {
+  log "stopping, setting fans to ${STOP_SPEED}%"
+  set_all "$STOP_SPEED"
+  rm -f "$STATUS"
+  exit 0
+}
+
+load_config
+if ! find_controller; then
+  log "error: NZXT controller (nzxtsmart2 hwmon) not found"
+  exit 1
+fi
+log "started (controller $NZXT, interval ${INTERVAL}s)"
+trap shutdown TERM INT
+trap 'load_config; log "config reloaded"' HUP
+
+while true; do
+  tick
+  sleep "$INTERVAL" &
+  wait $!
+done
+]]></INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/scripts/rc.&name;" Mode="0755">
+<INLINE><![CDATA[#!/bin/bash
+# start|stop|restart|reload|status for the NZXT fan control daemon.
+
+PLUGIN=nzxt-fancontrol
+DAEMON=/usr/local/emhttp/plugins/$PLUGIN/scripts/fancontrol.sh
+PIDFILE=/var/run/$PLUGIN.pid
+CFG=/boot/config/plugins/$PLUGIN/$PLUGIN.cfg
+
+running() { [[ -f $PIDFILE ]] && kill -0 "$(< "$PIDFILE")" 2>/dev/null; }
+
+start() {
+  running && { echo "$PLUGIN already running"; return 0; }
+  setsid "$DAEMON" </dev/null >/dev/null 2>&1 &
+  echo $! > "$PIDFILE"
+  sleep 1
+  running && echo "$PLUGIN started" || { echo "$PLUGIN failed to start (see syslog)"; rm -f "$PIDFILE"; return 1; }
+}
+
+stop() {
+  running || { rm -f "$PIDFILE"; echo "$PLUGIN not running"; return 0; }
+  local pid; pid=$(< "$PIDFILE")
+  kill "$pid"
+  for _ in {1..10}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+  rm -f "$PIDFILE"
+  echo "$PLUGIN stopped"
+}
+
+# Called by the settings page after saving: honour the enable/disable switch.
+apply() {
+  local SERVICE=enable
+  [[ -f $CFG ]] && source "$CFG"
+  stop
+  [[ $SERVICE == enable ]] && start
+}
+
+case $1 in
+  start)   start ;;
+  stop)    stop ;;
+  restart) stop; start ;;
+  apply)   apply ;;
+  reload)  running && kill -HUP "$(< "$PIDFILE")" ;;
+  status)  running && echo "$PLUGIN running (pid $(< "$PIDFILE"))" || { echo "$PLUGIN stopped"; exit 1; } ;;
+  *)       echo "usage: $0 start|stop|restart|apply|reload|status"; exit 1 ;;
+esac
+]]></INLINE>
+</FILE>
+
+<!-- Post-install: start the daemon unless disabled in settings. -->
+<FILE Run="/bin/bash">
+<INLINE>
+mkdir -p &flash;
+SERVICE=enable
+[ -f &flash;/&name;.cfg ] &amp;&amp; source &flash;/&name;.cfg
+if [ "$SERVICE" = "enable" ]; then
+  &emhttp;/scripts/rc.&name; start
+else
+  echo "&name; is disabled in Settings > NZXT Fan Control"
+fi
+echo ""
+echo "-----------------------------------------------------------"
+echo " &name; v&version; installed"
+echo " Configure under Settings > NZXT Fan Control"
+echo "-----------------------------------------------------------"
+</INLINE>
+</FILE>
+
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+[ -x &emhttp;/scripts/rc.&name; ] &amp;&amp; &emhttp;/scripts/rc.&name; stop
+rm -rf &emhttp;
+rm -f /var/run/&name;.status
+echo "&name; removed (settings kept in &flash;)"
+</INLINE>
+</FILE>
+
+</PLUGIN>

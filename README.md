@@ -1,3 +1,6 @@
+> **Deprecated:** the Docker container is replaced by the [NZXT Fan Control plugin](nzxt-fancontrol/), which uses the
+> in-kernel `nzxt-smart2` driver (no liquidctl/Python/Docker) and never wakes spun-down drives.
+
 Change 10/08/2025
 🆕 What's New
 

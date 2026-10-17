@@ -1,0 +1,111 @@
+Menu="Utilities"
+Title="NZXT Fan Control"
+Icon="snowflake-o"
+Tag="snowflake-o"
+---
+<?PHP
+$plugin = "nzxt-fancontrol";
+$cfg = parse_plugin_cfg($plugin);
+$running = trim(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/rc.$plugin status 2>/dev/null"));
+$list = '^\s*\d+(\s*,\s*\d+)*\s*$';
+?>
+<style>
+table.nzxt{width:auto;margin:0 0 20px 0}
+table.nzxt td,table.nzxt th{padding:4px 16px 4px 0;text-align:left}
+</style>
+
+<div markdown="1">
+**Status:** <span id="nzxt-state"><?=htmlspecialchars($running)?></span>
+
+<table class="nzxt">
+<thead><tr><th>Fan</th><th>Source</th><th>Temp (&deg;C)</th><th>Speed (%)</th><th>RPM</th></tr></thead>
+<tbody id="nzxt-status"><tr><td colspan="5">Loading...</td></tr></tbody>
+</table>
+</div>
+
+<form markdown="1" name="nzxt_settings" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
+<input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/rc.<?=$plugin?>">
+<input type="hidden" name="#arg[1]" value="apply">
+
+Fan control service:
+: <select name="SERVICE">
+  <?=mk_option($cfg['SERVICE'], "enable", "Enabled")?>
+  <?=mk_option($cfg['SERVICE'], "disable", "Disabled")?>
+  </select>
+
+Check interval (seconds):
+: <input type="number" name="INTERVAL" min="5" max="600" value="<?=$cfg['INTERVAL']?>" class="narrow">
+
+Number of fans:
+: <select name="FAN_QUANTITY">
+  <?=mk_option($cfg['FAN_QUANTITY'], "1", "1")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "2", "2")?>
+  <?=mk_option($cfg['FAN_QUANTITY'], "3", "3")?>
+  </select>
+
+> Temperature thresholds and fan speeds are comma-separated lists of the same length.
+> When the temperature reaches a threshold, the fan runs at the matching speed; below the first threshold it uses the first speed.
+
+<h3>Fan 1: array hard drives</h3>
+
+HDD temperature thresholds (&deg;C):
+: <input type="text" name="HDD_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['HDD_THRESHOLDS']?>">
+
+Fan 1 speeds (%):
+: <input type="text" name="FAN1_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN1_SPEEDS']?>">
+
+Fan 1 speed when all drives are spun down (%):
+: <input type="number" name="HDD_IDLE_SPEED" min="0" max="100" value="<?=$cfg['HDD_IDLE_SPEED']?>" class="narrow">
+
+Excluded drives:
+: <input type="text" name="EXCLUDED_DRIVES" value="<?=$cfg['EXCLUDED_DRIVES']?>" placeholder="e.g. sdb,disk5">
+
+> Temperatures come from Unraid's own disk status, so spun-down drives are never woken.
+> Exclude drives by device (sdb) or array slot (parity, disk5), comma-separated.
+
+<h3>Fan 2: NVMe</h3>
+
+NVMe temperature thresholds (&deg;C):
+: <input type="text" name="NVME_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['NVME_THRESHOLDS']?>">
+
+Fan 2 speeds (%):
+: <input type="text" name="FAN2_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN2_SPEEDS']?>">
+
+<h3>Fan 3: motherboard</h3>
+
+Motherboard sensor (hwmon name):
+: <input type="text" name="MB_SENSOR" value="<?=$cfg['MB_SENSOR']?>" class="narrow">
+
+Motherboard temperature thresholds (&deg;C):
+: <input type="text" name="MB_THRESHOLDS" pattern="<?=$list?>" value="<?=$cfg['MB_THRESHOLDS']?>">
+
+Fan 3 speeds (%):
+: <input type="text" name="FAN3_SPEEDS" pattern="<?=$list?>" value="<?=$cfg['FAN3_SPEEDS']?>">
+
+Fan 3 follows fan 2 above NVMe temp (&deg;C):
+: <input type="number" name="FAN3_FOLLOW_NVME_ABOVE" min="0" max="100" value="<?=$cfg['FAN3_FOLLOW_NVME_ABOVE']?>" class="narrow">
+
+> Leave empty to disable.
+
+<h3>Safety</h3>
+
+Speed when service stops (%):
+: <input type="number" name="STOP_SPEED" min="0" max="100" value="<?=$cfg['STOP_SPEED']?>" class="narrow">
+
+&nbsp;
+: <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
+</form>
+
+<script>
+function nzxtRefresh() {
+  $.get('/plugins/<?=$plugin?>/include/status.php', function(data) {
+    $('#nzxt-status').html(data.rows);
+    $('#nzxt-state').text(data.state);
+  }, 'json');
+}
+$(function() {
+  nzxtRefresh();
+  setInterval(nzxtRefresh, 5000);
+});
+</script>
