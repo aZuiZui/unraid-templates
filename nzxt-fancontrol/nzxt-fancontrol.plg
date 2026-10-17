@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "nzxt-fancontrol">
 <!ENTITY author    "aZuiZui">
-<!ENTITY version   "2026.10.17e">
+<!ENTITY version   "2026.10.17f">
 <!ENTITY launch    "Settings/NZXTFanControl">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/aZuiZui/unraid-templates/main/nzxt-fancontrol/nzxt-fancontrol.plg">
 <!ENTITY support   "https://github.com/aZuiZui/unraid-templates/issues">
@@ -13,6 +13,10 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="&support;" min="6.12.0" icon="snowflake-o">
 
 <CHANGES>
+###2026.10.17f
+- Dashboard: fan names and set speed now appear on Unraid's own Airflow tile (hover for temperatures), with a settings shortcut
+- Dashboard setting: Airflow tile (default), own tile, or hidden
+
 ###2026.10.17e
 - Fail-safe: a fan whose sensor can't be read runs at the safe speed
 - Controller USB drops are detected and recovered, with Unraid notifications
@@ -64,7 +68,7 @@ FAN3_FOLLOW_NVME_ABOVE="40"
 FAN_QUANTITY="3"
 STOP_SPEED="60"
 NOTIFY="yes"
-DASHBOARD="yes"
+DASHBOARD="airflow"
 ]]></INLINE>
 </FILE>
 
@@ -191,11 +195,15 @@ Notifications:
 
 > Unraid notifications when a fan stops, the controller goes missing, or the watchdog restarts the service.
 
-Dashboard tile:
+Dashboard:
 : <select name="DASHBOARD">
-  <?=mk_option($cfg['DASHBOARD'], "yes", "Show")?>
+  <?=mk_option($cfg['DASHBOARD'] == 'yes' ? 'airflow' : $cfg['DASHBOARD'], "airflow", "Add to Airflow tile")?>
+  <?=mk_option($cfg['DASHBOARD'], "tile", "Own tile")?>
   <?=mk_option($cfg['DASHBOARD'], "no", "Hide")?>
   </select>
+
+> "Add to Airflow tile" puts the fan names and set speed on Unraid's own Airflow tile (hover for temperatures).
+> It falls back to a separate tile if the Airflow tile isn't there.
 
 &nbsp;
 : <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
@@ -447,11 +455,27 @@ $(function() {
 
 <FILE Name="&emhttp;/NZXTFanDash.page">
 <INLINE><![CDATA[Menu="Dashboard:0"
-Cond="(@parse_ini_file('/boot/config/plugins/nzxt-fancontrol/nzxt-fancontrol.cfg')['DASHBOARD'] ?? 'yes') != 'no'"
+Cond="(@parse_ini_file('/boot/config/plugins/nzxt-fancontrol/nzxt-fancontrol.cfg')['DASHBOARD'] ?? 'airflow') != 'no'"
 ---
 <?PHP
 $pluginname = "nzxt-fancontrol";
+$dashMode = @parse_ini_file("/boot/config/plugins/$pluginname/$pluginname.cfg")['DASHBOARD'] ?? 'airflow';
 
+// Position of the NZXT fans in Unraid's Airflow tile, which numbers every fanN_input from `sensors` in order.
+$airflowOffset = -1;
+if ($dashMode != 'tile') {
+  $index = 0; $chip = '';
+  foreach (explode("\n", shell_exec("sensors -uA 2>/dev/null")) as $line) {
+    if ($line !== '' && $line[0] != ' ' && strpos($line, ':') === false) $chip = $line;
+    elseif (preg_match('/^\s+fan\d+_input:/', $line)) {
+      if ($airflowOffset < 0 && strpos($chip, 'nzxtsmart2') === 0) $airflowOffset = $index;
+      $index++;
+    }
+  }
+}
+
+// Own tile only when there is no Airflow tile to extend (or it was asked for).
+if ($airflowOffset < 0) {
 $mytiles[$pluginname]['column2'] =
 <<<EOT
 <tbody id="nzdash" title="_(NZXT Fan Control)_">
@@ -459,7 +483,7 @@ $mytiles[$pluginname]['column2'] =
   <td>
     <span class='tile-header'>
       <span class='tile-header-left'>
-        <i class='fa fa-snowflake-o f32'></i>
+        <i class='icon-fan f32'></i>
         <div class='section'>
           <h3 class='tile-header-main'>_(Fans)_</h3>
           <span id='nzdash-state'>_(Loading)_...</span><br>
@@ -476,6 +500,7 @@ $mytiles[$pluginname]['column2'] =
 <tr><td id="nzdash-fans"></td></tr>
 </tbody>
 EOT;
+}
 ?>
 <style>
 #nzdash-fans .nzd-row{display:grid;grid-template-columns:minmax(0,1fr) 3.5em 7em 5em;align-items:center;gap:8px;padding:3px 0;font-variant-numeric:tabular-nums}
@@ -485,10 +510,41 @@ EOT;
 #nzdash-fans .nzd-bar b{position:relative;display:block;text-align:center;font-size:11px;line-height:14px;font-weight:normal}
 #nzdash-fans .nzd-rpm,#nzdash-fans .nzd-temp{text-align:right}
 #nzdash-fans .nzd-note{grid-column:1/-1;opacity:.75;font-size:.9em;margin-top:-2px}
+/* Airflow tile: Unraid rewrites the RPM text, so the set speed rides along as a pseudo-element. */
+span.nzair-val::after{content:attr(data-nz);opacity:.75}
+span.nzair-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 </style>
 <script>
+var nzAirflowOffset = <?=$airflowOffset?>;
+
+// Labels and RPM values in the Airflow tile, for the NZXT fans only.
+function nzAirflowSpans() {
+  var first = $('#fan' + nzAirflowOffset);
+  if (!first.length) return null;
+  var td = first.closest('td'), labels = td.children('span:not([id])');
+  return {tbody: first.closest('tbody'), label: function(k){ return labels.eq(nzAirflowOffset + k); }, value: function(k){ return $('#fan' + (nzAirflowOffset + k)); }};
+}
+
+function nzAirflowSetup(a) {
+  if (a.tbody.find('.nzair-cog').length) return;
+  var controls = a.tbody.find('.tile-header-right-controls');
+  var cog = '<a class="nzair-cog" href="/Settings/NZXTFanControl" title="NZXT fan control settings"><i class="fa fa-fw fa-sliders control"></i></a>';
+  if (controls.length) controls.prepend(cog);
+  else a.tbody.find('.tile-header').append('<span class="tile-header-right"><span class="tile-header-right-controls">' + cog + '</span></span>');
+}
+
 function nzDashRefresh() {
   $.get('/plugins/nzxt-fancontrol/include/status.php', function(d) {
+    var a = nzAirflowOffset >= 0 ? nzAirflowSpans() : null;
+    if (a) {
+      nzAirflowSetup(a);
+      d.fans.forEach(function(f) {
+        var k = f.fan - 1, tip = f.name + ': ' + (f.temp === null ? 'no temperature' : f.temp + '°C') + ' (' + f.source + '), ' + f.speed + '%, ' + f.mode + (f.note ? ', ' + f.note : '');
+        a.label(k).text(f.name).addClass('nzair-label').attr('title', tip);
+        a.value(k).addClass('nzair-val').attr({'data-nz': ' · ' + f.speed + '%', title: tip});
+      });
+      return;
+    }
     var box = $('#nzdash-fans');
     if (!box.length) return;
     $('#nzdash-state').text(d.controller === 'missing' ? 'Controller missing' : (d.fans.length ? 'Running' : 'Stopped'));

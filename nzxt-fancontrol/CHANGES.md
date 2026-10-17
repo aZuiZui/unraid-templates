@@ -1,3 +1,7 @@
+###2026.10.17f
+- Dashboard: fan names and set speed now appear on Unraid's own Airflow tile (hover for temperatures), with a settings shortcut
+- Dashboard setting: Airflow tile (default), own tile, or hidden
+
 ###2026.10.17e
 - Fail-safe: a fan whose sensor can't be read runs at the safe speed
 - Controller USB drops are detected and recovered, with Unraid notifications
