@@ -1,3 +1,6 @@
+###2026.10.17g
+- Airflow tile now shows full rows for each fan: name, temperature, speed bar, RPM and warnings, replacing the plain FAN n / RPM entries
+
 ###2026.10.17f
 - Dashboard: fan names and set speed now appear on Unraid's own Airflow tile (hover for temperatures), with a settings shortcut
 - Dashboard setting: Airflow tile (default), own tile, or hidden
