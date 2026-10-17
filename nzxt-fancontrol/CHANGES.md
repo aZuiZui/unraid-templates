@@ -1,3 +1,6 @@
+###2026.10.17h
+- Reverted the Airflow tile to the 2026.10.17f layout: fan names and set speed on the built-in entries, temperatures on hover
+
 ###2026.10.17g
 - Airflow tile now shows full rows for each fan: name, temperature, speed bar, RPM and warnings, replacing the plain FAN n / RPM entries
 
