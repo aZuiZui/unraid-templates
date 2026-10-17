@@ -6,7 +6,7 @@ $pluginname = "nzxt-fancontrol";
 $dashMode = @parse_ini_file("/boot/config/plugins/$pluginname/$pluginname.cfg")['DASHBOARD'] ?? 'airflow';
 
 // Position of the NZXT fans in Unraid's Airflow tile, which numbers every fanN_input from `sensors` in order.
-$airflowOffset = -1; $airflowTotal = 0;
+$airflowOffset = -1;
 if ($dashMode != 'tile') {
   $index = 0; $chip = '';
   foreach (explode("\n", shell_exec("sensors -uA 2>/dev/null")) as $line) {
@@ -16,7 +16,6 @@ if ($dashMode != 'tile') {
       $index++;
     }
   }
-  $airflowTotal = $index;
 }
 
 // Own tile only when there is no Airflow tile to extend (or it was asked for).
@@ -55,40 +54,46 @@ EOT;
 #nzdash-fans .nzd-bar b{position:relative;display:block;text-align:center;font-size:11px;line-height:14px;font-weight:normal}
 #nzdash-fans .nzd-rpm,#nzdash-fans .nzd-temp{text-align:right}
 #nzdash-fans .nzd-note{grid-column:1/-1;opacity:.75;font-size:.9em;margin-top:-2px}
+/* Airflow tile: Unraid rewrites the RPM text, so the set speed rides along as a pseudo-element. */
+span.nzair-val::after{content:attr(data-nz);opacity:.75}
+span.nzair-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 </style>
 <script>
-var nzAirflowOffset = <?=$airflowOffset?>, nzAirflowTotal = <?=$airflowTotal?>, nzFanCount = 3;
+var nzAirflowOffset = <?=$airflowOffset?>;
 
-// Moves the NZXT fans into Unraid's Airflow tile: our rows replace its plain "FAN n / RPM" entries.
-function nzAirflowSetup() {
-  if ($('#nzdash-fans').length) return true;
+// Labels and RPM values in the Airflow tile, for the NZXT fans only.
+function nzAirflowSpans() {
   var first = $('#fan' + nzAirflowOffset);
-  if (!first.length) return false;
-  var td = first.closest('td'), tbody = first.closest('tbody');
-  if (nzAirflowTotal <= nzFanCount) {
-    td.closest('tr').hide();   // every fan in the tile is ours
-  } else {
-    var labels = td.children('span:not([id])');
-    for (var k = 0; k < nzFanCount; k++) { labels.eq(nzAirflowOffset + k).hide(); $('#fan' + (nzAirflowOffset + k)).hide(); }
-  }
-  td.closest('tr').after('<tr><td id="nzdash-fans"></td></tr>');
-  tbody.find('.tile-header-left .section > span').first().append(' &middot; <span id="nzdash-state"></span>');
-  var cog = '<a href="/Settings/NZXTFanControl" title="NZXT fan control settings"><i class="fa fa-fw fa-sliders control"></i></a>';
-  var controls = tbody.find('.tile-header-right-controls');
+  if (!first.length) return null;
+  var td = first.closest('td'), labels = td.children('span:not([id])');
+  return {tbody: first.closest('tbody'), label: function(k){ return labels.eq(nzAirflowOffset + k); }, value: function(k){ return $('#fan' + (nzAirflowOffset + k)); }};
+}
+
+function nzAirflowSetup(a) {
+  if (a.tbody.find('.nzair-cog').length) return;
+  var controls = a.tbody.find('.tile-header-right-controls');
+  var cog = '<a class="nzair-cog" href="/Settings/NZXTFanControl" title="NZXT fan control settings"><i class="fa fa-fw fa-sliders control"></i></a>';
   if (controls.length) controls.prepend(cog);
-  else tbody.find('.tile-header').append('<span class="tile-header-right"><span class="tile-header-right-controls">' + cog + '</span></span>');
-  return true;
+  else a.tbody.find('.tile-header').append('<span class="tile-header-right"><span class="tile-header-right-controls">' + cog + '</span></span>');
 }
 
 function nzDashRefresh() {
   $.get('/plugins/nzxt-fancontrol/include/status.php', function(d) {
-    nzFanCount = Math.max(d.fans.length, 1);
-    if (nzAirflowOffset >= 0) nzAirflowSetup();
+    var a = nzAirflowOffset >= 0 ? nzAirflowSpans() : null;
+    if (a) {
+      nzAirflowSetup(a);
+      d.fans.forEach(function(f) {
+        var k = f.fan - 1, tip = f.name + ': ' + (f.temp === null ? 'no temperature' : f.temp + '°C') + ' (' + f.source + '), ' + f.speed + '%, ' + f.mode + (f.note ? ', ' + f.note : '');
+        a.label(k).text(f.name).addClass('nzair-label').attr('title', tip);
+        a.value(k).addClass('nzair-val').attr({'data-nz': ' · ' + f.speed + '%', title: tip});
+      });
+      return;
+    }
     var box = $('#nzdash-fans');
     if (!box.length) return;
     $('#nzdash-state').text(d.controller === 'missing' ? 'Controller missing' : (d.fans.length ? 'Running' : 'Stopped'));
     box.html(d.fans.map(function(f) {
-      return '<div class="nzd-row"><span class="nzd-name" title="' + f.source + ', ' + f.mode + '">' + f.name + '</span>' +
+      return '<div class="nzd-row"><span class="nzd-name" title="' + f.source + '">' + f.name + '</span>' +
         '<span class="nzd-temp">' + (f.temp === null ? '-' : f.temp + '&deg;C') + '</span>' +
         '<span class="nzd-bar"><span style="width:' + f.speed + '%"></span><b>' + f.speed + '%</b></span>' +
         '<span class="nzd-rpm">' + f.rpm + ' rpm</span>' +
